@@ -15,7 +15,7 @@ from pathlib import Path
 import joblib
 import pandas as pd
 
-from personalization_engine import (
+from .personalization_engine import (
     choose_priority_domain,
     choose_activity,
 )

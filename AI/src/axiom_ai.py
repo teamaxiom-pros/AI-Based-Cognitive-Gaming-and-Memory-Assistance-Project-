@@ -1,219 +1,236 @@
 """
-Team Axiom - AI API Interface
-
-JSON/dictionary request
-        ↓
 Axiom AI
-        ↓
-JSON/dictionary response
+
+Main AI interface for:
+1. Initial cognitive assessment
+2. Personalised recommendation
+3. Performance analysis
 """
 
-from typing import Dict, List, Optional
-
-from .initial_assessment import (
-    AssessmentResult,
-    build_baseline,
-)
-
-from .recommendation_engine import (
-    generate_recommendation,
-)
+from .initial_assessment import build_baseline
+from .recommendation_engine import generate_recommendation
 
 
 # ---------------------------------
-# New patient: create baseline
+# Initial Assessment
 # ---------------------------------
 
-def create_baseline_from_request(
-    assessment_results: List[Dict],
-) -> Dict:
+def create_baseline_from_request(assessment_results):
     """
-    Convert JSON-style assessment results into
-    AssessmentResult objects and create a baseline.
+    Create a cognitive baseline for a new patient.
     """
 
-    results = []
+    baseline = build_baseline(
+        assessment_results
+    )
 
-    for item in assessment_results:
-        results.append(
-            AssessmentResult(
-                task_id=item["task_id"],
-                domain=item["domain"],
-                accuracy=float(item["accuracy"]),
-                response_time=float(
-                    item["response_time"]
-                ),
-                attempts=int(item.get("attempts", 1)),
-                hints_used=int(
-                    item.get("hints_used", 0)
-                ),
-            )
-        )
+    # Find weakest domain
+    focus_domain = min(
+        baseline,
+        key=lambda domain: baseline[domain]["score"]
+    )
 
-    return build_baseline(results)
+    return {
+        "success": True,
+        "action": "initial_assessment",
+        "baseline": baseline,
+        "focus_domain": focus_domain,
+    }
 
 
 # ---------------------------------
-# Main public interface
+# Recommendation
 # ---------------------------------
 
-def process_request(request: Dict) -> Dict:
+def get_recommendation(
+    patient_id,
+    preferred_activity=None,
+):
     """
-    Main entry point for Team Axiom's backend.
+    Generate a personalised recommendation
+    for an existing patient.
+    """
+
+    result = generate_recommendation(
+        patient_id=patient_id,
+        preferred_activity=preferred_activity,
+    )
+
+    return {
+        "success": True,
+        "patient_id": patient_id,
+        "action": "recommend",
+
+        "focus_domain": result[
+            "domain"
+        ],
+
+        "recommended_activity": result[
+            "activity"
+        ],
+
+        "recommended_difficulty": result[
+            "final_difficulty"
+        ],
+
+        "performance": result[
+            "performance"
+        ],
+    }
+
+
+# ---------------------------------
+# Patient Processing
+# ---------------------------------
+
+def process_patient(
+    patient_id,
+    preferred_activity=None,
+):
+    """
+    Process an existing patient.
+    """
+
+    return get_recommendation(
+        patient_id=patient_id,
+        preferred_activity=preferred_activity,
+    )
+
+
+# ---------------------------------
+# Main Request Handler
+# ---------------------------------
+
+def process_request(request):
+    """
+    Main entry point for the Axiom AI API.
 
     Supported actions:
-        - initial_assessment
-        - recommend
+        initial_assessment
+        recommend
     """
 
-    patient_id = request.get("patient_id")
-
-    if not patient_id:
-        return {
-            "success": False,
-            "error": "patient_id is required",
-        }
-
-    action = request.get("action")
+    action = request.get(
+        "action"
+    )
 
     # ---------------------------------
-    # New patient assessment
+    # Initial Assessment
     # ---------------------------------
 
     if action == "initial_assessment":
 
         assessment_results = request.get(
-            "assessment_results"
+            "assessment_results",
+            []
         )
 
         if not assessment_results:
+
             return {
                 "success": False,
                 "error": (
-                    "assessment_results are required"
+                    "assessment_results "
+                    "are required"
                 ),
             }
 
-        baseline = create_baseline_from_request(
+        return create_baseline_from_request(
             assessment_results
         )
 
-        weakest_domain = min(
-            baseline,
-            key=lambda domain:
-            baseline[domain]["score"]
-        )
-
-        return {
-            "success": True,
-            "patient_id": patient_id,
-            "action": "initial_assessment",
-            "baseline": baseline,
-            "focus_domain": weakest_domain,
-        }
-
     # ---------------------------------
-    # Existing patient recommendation
+    # Recommendation
     # ---------------------------------
 
-    if action == "recommend":
+    elif action == "recommend":
 
-        recommendation = generate_recommendation(
-            patient_id=patient_id,
-            preferred_activity=request.get(
-                "preferred_activity"
-            ),
+        patient_id = request.get(
+            "patient_id"
         )
 
-        return {
-            "success": True,
-            "patient_id": patient_id,
-            "action": "recommend",
-            "focus_domain": recommendation[
-                "domain"
-            ],
-            "recommended_activity": (
-                recommendation["activity"]
-            ),
-            "recommended_difficulty": (
-                recommendation[
-                    "final_difficulty"
-                ]
-            ),
-            "performance": {
-                "recent_accuracy": (
-                    recommendation[
-                        "recent_accuracy"
-                    ]
+        if not patient_id:
+
+            return {
+                "success": False,
+                "error": (
+                    "patient_id is required"
                 ),
-                "trend": (
-                    recommendation["trend"]
-                ),
-            },
-        }
+            }
+
+        preferred_activity = request.get(
+            "preferred_activity"
+        )
+
+        try:
+
+            return get_recommendation(
+                patient_id=patient_id,
+                preferred_activity=preferred_activity,
+            )
+
+        except Exception as error:
+
+            return {
+                "success": False,
+                "error": str(error),
+            }
 
     # ---------------------------------
     # Unknown action
     # ---------------------------------
 
-    return {
-        "success": False,
-        "error": f"Unknown action: {action}",
-    }
+    else:
+
+        return {
+            "success": False,
+            "error": (
+                f"Unknown action: {action}"
+            ),
+        }
 
 
 # ---------------------------------
-# Test
+# Local Test
 # ---------------------------------
 
 if __name__ == "__main__":
 
+    print(
+        "\n========== NEW PATIENT =========="
+    )
+
+    assessment_results = [
+        {
+            "task_id": "MEM_01",
+            "domain": "memory",
+            "accuracy": 0.80,
+            "response_time": 8.0,
+            "attempts": 1,
+            "hints": 0,
+        },
+        {
+            "task_id": "MEM_02",
+            "domain": "memory",
+            "accuracy": 0.70,
+            "response_time": 10.0,
+            "attempts": 1,
+            "hints": 1,
+        },
+        {
+            "task_id": "ATT_01",
+            "domain": "attention",
+            "accuracy": 0.90,
+            "response_time": 6.0,
+            "attempts": 1,
+            "hints": 0,
+        },
+    ]
+
     new_patient_request = {
-        "patient_id": "DEMO_NEW",
         "action": "initial_assessment",
-        "assessment_results": [
-            {
-                "task_id": "MEM_01",
-                "domain": "memory",
-                "accuracy": 0.60,
-                "response_time": 12,
-                "attempts": 1,
-                "hints_used": 1,
-            },
-            {
-                "task_id": "MEM_02",
-                "domain": "memory",
-                "accuracy": 0.70,
-                "response_time": 10,
-                "attempts": 1,
-                "hints_used": 0,
-            },
-            {
-                "task_id": "ATT_01",
-                "domain": "attention",
-                "accuracy": 0.80,
-                "response_time": 7,
-                "attempts": 1,
-                "hints_used": 0,
-            },
-            {
-                "task_id": "ATT_02",
-                "domain": "attention",
-                "accuracy": 0.75,
-                "response_time": 8,
-                "attempts": 1,
-                "hints_used": 0,
-            },
-        ],
+        "assessment_results": assessment_results,
     }
-
-    existing_patient_request = {
-        "patient_id": "P001",
-        "action": "recommend",
-        "preferred_activity": "story_recall",
-    }
-
-    print("\n========== NEW PATIENT ==========\n")
 
     print(
         process_request(
@@ -221,7 +238,15 @@ if __name__ == "__main__":
         )
     )
 
-    print("\n========== EXISTING PATIENT ==========\n")
+    print(
+        "\n========== EXISTING PATIENT =========="
+    )
+
+    existing_patient_request = {
+        "patient_id": "P001",
+        "action": "recommend",
+        "preferred_activity": "story_recall",
+    }
 
     print(
         process_request(

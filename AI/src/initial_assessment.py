@@ -1,21 +1,21 @@
 """
 Axiom Initial Cognitive Assessment
 
-Converts raw assessment task results into an
-Axiom Cognitive Baseline.
+Converts raw task results into:
+    Task score → Domain score → Cognitive baseline
 
 IMPORTANT:
-This is for personalization in our prototype.
-It is NOT a clinical diagnostic score.
+This is an internal prototype score for personalization.
+It is NOT a medical/clinical diagnostic score.
 """
 
 from dataclasses import dataclass
 from typing import List, Dict
 
 
-# ---------------------------------
-# Result structure
-# ---------------------------------
+# ============================================
+# 1. Store the result of ONE assessment task
+# ============================================
 
 @dataclass
 class AssessmentResult:
@@ -27,55 +27,61 @@ class AssessmentResult:
     hints_used: int
 
 
-# ---------------------------------
-# Calculate performance score
-# ---------------------------------
+# ============================================
+# 2. Convert ONE task result into 0–100 score
+# ============================================
 
-def calculate_domain_score(results):
-    """
-    Calculate one Axiom performance score from multiple
-    assessment tasks in the same cognitive domain.
+def calculate_task_score(
+    result: AssessmentResult,
+) -> float:
 
-    This is NOT a clinical diagnostic score.
-    """
+    # -----------------------------
+    # Accuracy → 50%
+    # -----------------------------
 
-    if not results:
-        return 0.0
+    accuracy_score = result.accuracy * 50
 
-    avg_accuracy = sum(
-        r.accuracy for r in results
-    ) / len(results)
 
-    avg_response_time = sum(
-        r.response_time for r in results
-    ) / len(results)
+    # -----------------------------
+    # Speed → 30%
+    # -----------------------------
 
-    avg_hints = sum(
-        r.hints_used for r in results
-    ) / len(results)
-
-    avg_attempts = sum(
-        r.attempts for r in results
-    ) / len(results)
-
-    accuracy_score = avg_accuracy * 50
-
+    # 15 seconds is our prototype reference.
     speed_score = (
         max(
             0,
-            min(1, 15 / max(avg_response_time, 1))
-        ) * 20
+            min(
+                1,
+                15 / max(result.response_time, 1)
+            )
+        )
+        * 30
     )
+
+
+    # -----------------------------
+    # Assistance / hints → 10%
+    # -----------------------------
 
     assistance_score = max(
         0,
-        1 - avg_hints * 0.15
-    ) * 15
+        1 - result.hints_used * 0.15
+    ) * 10
+
+
+    # -----------------------------
+    # Attempts → 10%
+    # -----------------------------
 
     attempt_score = max(
         0,
-        1 - (avg_attempts - 1) * 0.10
-    ) * 15
+        1 - (result.attempts - 1) * 0.10
+    ) * 10
+
+
+    # -----------------------------
+    # Final task score
+    # -----------------------------
 
     score = (
         accuracy_score
@@ -84,12 +90,15 @@ def calculate_domain_score(results):
         + attempt_score
     )
 
-    return round(min(score, 100), 2)
+    return round(
+        min(score, 100),
+        2
+    )
 
 
-# ---------------------------------
-# Interpret score
-# ---------------------------------
+# ============================================
+# 3. Convert score → simple internal level
+# ============================================
 
 def get_level(score: float) -> str:
 
@@ -105,11 +114,15 @@ def get_level(score: float) -> str:
     return "Significant Difficulty"
 
 
-# ---------------------------------
-# Build baseline
-# ---------------------------------
+# ============================================
+# 4. Build domain baseline
+# ============================================
 
-def build_baseline(task_results):
+def build_baseline(
+    task_results: List[AssessmentResult],
+) -> Dict:
+
+    # Group task results by domain
     domains = {}
 
     for result in task_results:
@@ -119,102 +132,167 @@ def build_baseline(task_results):
 
         domains[result.domain].append(result)
 
+
     baseline = {}
 
+
+    # Calculate each domain
     for domain, results in domains.items():
 
-        score = calculate_domain_score(results)
+        task_scores = [
+            calculate_task_score(result)
+            for result in results
+        ]
+
+        domain_score = sum(task_scores) / len(
+            task_scores
+        )
 
         baseline[domain] = {
-            "score": score,
-            "level": get_level(score),
+            "score": round(domain_score, 2),
+            "level": get_level(domain_score),
             "tasks_completed": len(results),
+            "task_scores": [
+                round(score, 2)
+                for score in task_scores
+            ],
         }
 
     return baseline
 
 
-# ---------------------------------
-# Example assessment
-# ---------------------------------
+# ============================================
+# 5. Test with a complete 10-task assessment
+# ============================================
 
 if __name__ == "__main__":
 
     results = [
+
+        # -------- MEMORY --------
+
         AssessmentResult(
-            task_id="MEM_01",
-            domain="memory",
-            accuracy=0.60,
-            response_time=12,
-            attempts=1,
-            hints_used=1,
+            "MEM_01",
+            "memory",
+            0.60,
+            12,
+            1,
+            1,
         ),
 
         AssessmentResult(
-            task_id="ATT_01",
-            domain="attention",
-            accuracy=0.80,
-            response_time=7,
-            attempts=1,
-            hints_used=0,
+            "MEM_02",
+            "memory",
+            0.70,
+            10,
+            1,
+            0,
+        ),
+
+
+        # -------- ATTENTION --------
+
+        AssessmentResult(
+            "ATT_01",
+            "attention",
+            0.80,
+            7,
+            1,
+            0,
         ),
 
         AssessmentResult(
-            task_id="SPD_01",
-            domain="processing_speed",
-            accuracy=0.65,
-            response_time=5,
-            attempts=1,
-            hints_used=0,
+            "ATT_02",
+            "attention",
+            0.75,
+            8,
+            1,
+            0,
+        ),
+
+
+        # -------- PROCESSING SPEED --------
+
+        AssessmentResult(
+            "SPD_01",
+            "processing_speed",
+            0.65,
+            5,
+            1,
+            0,
         ),
 
         AssessmentResult(
-            task_id="EXE_01",
-            domain="executive_function",
-            accuracy=0.70,
-            response_time=10,
-            attempts=1,
-            hints_used=1,
+            "SPD_02",
+            "processing_speed",
+            0.70,
+            1.2,
+            1,
+            0,
+        ),
+
+
+        # -------- EXECUTIVE FUNCTION --------
+
+        AssessmentResult(
+            "EXE_01",
+            "executive_function",
+            0.70,
+            10,
+            1,
+            1,
         ),
 
         AssessmentResult(
-            task_id="REC_01",
-            domain="recognition",
-            accuracy=0.90,
-            response_time=6,
-            attempts=1,
-            hints_used=0,
+            "EXE_02",
+            "executive_function",
+            0.75,
+            9,
+            1,
+            0,
+        ),
+
+
+        # -------- RECOGNITION --------
+
+        AssessmentResult(
+            "REC_01",
+            "recognition",
+            0.90,
+            6,
+            1,
+            0,
         ),
 
         AssessmentResult(
-            task_id="MEM_02",
-            domain="memory",
-            accuracy=0.70,
-            response_time=10,
-            attempts=1,
-            hints_used=0,
-        ),
-
-        AssessmentResult(
-            task_id="ATT_02",
-            domain="attention",
-            accuracy=0.75,
-            response_time=8,
-            attempts=1,
-            hints_used=0,
+            "REC_02",
+            "recognition",
+            0.85,
+            7,
+            1,
+            0,
         ),
     ]
 
+
     baseline = build_baseline(results)
+
 
     print(
         "\n========== AXIOM COGNITIVE BASELINE ==========\n"
     )
+
 
     for domain, data in baseline.items():
 
         print(
             f"{domain:20} "
             f"{data['score']:6.2f} "
-            f"({data['level']})"
+            f"({data['level']}) "
+            f"Tasks: {data['tasks_completed']}"
+        )
+
+        print(
+            f"  Task scores: "
+            f"{data['task_scores']}"
         )

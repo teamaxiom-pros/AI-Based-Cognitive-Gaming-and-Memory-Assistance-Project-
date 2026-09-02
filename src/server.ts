@@ -27,6 +27,7 @@ app.use((req, _res, next) => {
 // API Routes
 app.use('/api', apiRouter);
 app.use('/api/v1', apiRouter); // Alias for backwards compatibility
+app.use('/', apiRouter); // Direct router mount for serverless rewrite compatibility
 
 // Root status
 app.get('/', (_req, res) => {

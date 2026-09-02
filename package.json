@@ -14,7 +14,7 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:seed": "tsx src/db/seed.ts",
     "db:studio": "prisma studio",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate && npm --prefix \"Front End\" install"
   },
   "prisma": {
     "schema": "prisma/schema.prisma",

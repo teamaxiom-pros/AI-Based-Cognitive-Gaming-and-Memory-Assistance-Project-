@@ -2,6 +2,16 @@
   "version": 2,
   "buildCommand": "npm run build",
   "outputDirectory": "Front End/dist",
+  "functions": {
+    "api/ai.py": {
+      "includeFiles": "AI/**",
+      "excludeFiles": "{node_modules/**,Front End/**,dist/**,src/**,.git/**,BE/**,prisma/**}"
+    },
+    "api/index.ts": {
+      "includeFiles": "{src/**,AI/data/**}",
+      "excludeFiles": "{Front End/**,dist/**,.git/**,BE/**}"
+    }
+  },
   "rewrites": [
     { "source": "/ai/:path*", "destination": "/api/ai.py" },
     { "source": "/api/ai/:path*", "destination": "/api/ai.py" },

@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { PatientLayout } from '../../components/layout/PatientLayout';
 import { VoiceButton } from '../../components/common/VoiceButton';
 import { processAssistantQuery, AssistantResponse } from '../../services/assistantService';
+import { apiService } from '../../services/apiService';
 import { SpeechSpeaker } from '../../components/common/SpeechSpeaker';
 import {
   Sparkles,
@@ -41,28 +42,45 @@ export const AxiomAssistantPage: React.FC = () => {
     { label: t('assistant.prompt7'), query: 'where do I live' },
   ];
 
-  const handleQuery = (queryText: string) => {
+  const handleQuery = async (queryText: string) => {
     stopSpeech();
     setCurrentQuery(queryText);
     setIsProcessing(true);
     setIsListening(false);
 
-    setTimeout(() => {
-      const takenCount = medicines.filter(m => m.isTakenToday).length;
-      const res = processAssistantQuery(
-        queryText,
-        patient.name.split(' ')[0],
-        takenCount,
-        medicines.length,
-        assessmentResult,
-        resultsLog,
-        gameProgress,
-        recommendations
-      );
-      setResponse(res);
-      setIsProcessing(false);
-      speakText(res.answer);
-    }, 400);
+    try {
+      const backendRes = await apiService.queryAssistant(queryText, patient.id || 'P001');
+      if (backendRes && backendRes.success && backendRes.response) {
+        const resObj: AssistantResponse = {
+          answer: backendRes.response,
+          actionType: (backendRes.actionType as any) || 'speak',
+          actionTarget: backendRes.actionTarget,
+          suggestedFollowUp: ['What should I practice?', 'Play a brain game', 'Show my schedule'],
+        };
+        setResponse(resObj);
+        setIsProcessing(false);
+        speakText(resObj.answer);
+        return;
+      }
+    } catch (e) {
+      console.warn('[AxiomAssistant] Backend query fallback:', e);
+    }
+
+    // Client-side deterministic evaluation fallback
+    const takenCount = medicines.filter(m => m.isTakenToday).length;
+    const res = processAssistantQuery(
+      queryText,
+      patient.name.split(' ')[0],
+      takenCount,
+      medicines.length,
+      assessmentResult,
+      resultsLog,
+      gameProgress,
+      recommendations
+    );
+    setResponse(res);
+    setIsProcessing(false);
+    speakText(res.answer);
   };
 
   const handleToggleVoice = () => {

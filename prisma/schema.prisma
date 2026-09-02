@@ -1,0 +1,97 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  patient
+  caregiver
+  admin
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String?  @unique
+  role      Role     @default(patient)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  patient   Patient?
+}
+
+model Patient {
+  id                 String              @id @default(uuid())
+  userId             String?             @unique
+  user               User?               @relation(fields: [userId], references: [id])
+  externalPatientId  String?             @unique // e.g. "P001", "patient-asha-001"
+  name               String
+  age                Int
+  gender             String?
+  location           String?
+  language           String              @default("en")
+  cognitiveBaseline  String?
+  focusDomain        String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  assessmentSessions AssessmentSession[]
+  gameSessions       GameSession[]
+  medicines          Medicine[]
+  routineItems       RoutineItem[]
+}
+
+model AssessmentSession {
+  id                    String   @id @default(uuid())
+  patientId             String
+  patient               Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  overallScore          Int
+  focusDomain           String
+  baselineScores        Json     // Serialized baseline object from AI
+  rawTaskResponses      Json     // Array of raw frontend task responses
+  aiSummary             String?
+  recommendedActivities String[]
+  createdAt             DateTime @default(now())
+}
+
+model GameSession {
+  id              String   @id @default(uuid())
+  patientId       String
+  patient         Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  gameId          String
+  gameTitle       String
+  domain          String
+  level           Int
+  difficultyTier  Int      @default(1)
+  score           Int
+  accuracy        Float
+  durationSeconds Float
+  hintsUsed       Int      @default(0)
+  completedAt     DateTime @default(now())
+}
+
+model Medicine {
+  id           String   @id @default(uuid())
+  patientId    String
+  patient      Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  name         String
+  dosage       String
+  instructions String?
+  timeSlot     String
+  time         String
+  isTakenToday Boolean  @default(false)
+  updatedAt    DateTime @updatedAt
+}
+
+model RoutineItem {
+  id          String   @id @default(uuid())
+  patientId   String
+  patient     Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  title       String
+  time        String
+  timeBlock   String
+  icon        String?
+  isCompleted Boolean  @default(false)
+  updatedAt   DateTime @updatedAt
+}

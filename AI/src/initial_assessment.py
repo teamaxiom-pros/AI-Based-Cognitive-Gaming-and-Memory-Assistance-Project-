@@ -122,10 +122,27 @@ def build_baseline(
     task_results: List[AssessmentResult],
 ) -> Dict:
 
+    # Normalize dict inputs to AssessmentResult if passed as dictionaries
+    normalized_results = []
+    for r in task_results:
+        if isinstance(r, dict):
+            normalized_results.append(
+                AssessmentResult(
+                    task_id=r.get("task_id", ""),
+                    domain=r.get("domain", ""),
+                    accuracy=float(r.get("accuracy", 0.0)),
+                    response_time=float(r.get("response_time", 0.0)),
+                    attempts=int(r.get("attempts", 1)),
+                    hints_used=int(r.get("hints_used", r.get("hints", 0))),
+                )
+            )
+        else:
+            normalized_results.append(r)
+
     # Group task results by domain
     domains = {}
 
-    for result in task_results:
+    for result in normalized_results:
 
         if result.domain not in domains:
             domains[result.domain] = []

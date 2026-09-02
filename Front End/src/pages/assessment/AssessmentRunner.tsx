@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { assessmentTasks } from '../../data/assessmentQuestions';
 import { AssessmentTaskResponse } from '../../types';
 import { scoreAssessmentResponses } from '../../services/assessmentEngine';
+import { apiService } from '../../services/apiService';
 import { Button } from '../../components/common/Button';
 import { ProgressBar } from '../../components/common/ProgressBar';
 import { SpeechSpeaker } from '../../components/common/SpeechSpeaker';
@@ -94,7 +95,9 @@ export const AssessmentRunner: React.FC = () => {
     return response;
   };
 
-  const handleNext = () => {
+  const [isEvaluating, setIsEvaluating] = useState<boolean>(false);
+
+  const handleNext = async () => {
     soundEffects.playSoftClick();
     const taskResponse = recordCurrentTaskResponse();
     const nextMap = { ...responsesMap, [currentTask.id]: taskResponse };
@@ -104,33 +107,47 @@ export const AssessmentRunner: React.FC = () => {
       setCurrentTaskIndex(prev => prev + 1);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } else {
-      // Finish Assessment & Score through the mathematical engine
+      // Finish Assessment & Score through the Backend / Axiom AI engine
       const allResponses = Object.values(nextMap);
-      const endTime = new Date().toISOString();
+      setIsEvaluating(true);
 
       try {
         confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
       } catch (e) {}
 
-      const session = scoreAssessmentResponses(
-        patient.id || 'patient-asha-001',
-        allResponses,
-        sessionStartTimeRef.current,
-        endTime
-      );
+      try {
+        // Send raw responses to Backend -> Axiom AI
+        const aiResult = await apiService.submitInitialAssessment(
+          patient.id || 'P001',
+          allResponses
+        );
 
-      setAssessmentResult({
-        sessionId: session.sessionId,
-        completedAt: new Date(session.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        overallScore: session.overallScore,
-        domainScores: session.domainScores,
-        aiSummary: session.aiSummary,
-        recommendedActivities: session.recommendedActivities,
-        clinicalNotes: session.clinicalNotes,
-        taskResponses: session.taskResponses,
-      });
+        setAssessmentResult(aiResult);
+        localStorage.setItem('axiom_assessment_result_v2', JSON.stringify(aiResult));
+        localStorage.setItem('axiom_assessment_result', JSON.stringify(aiResult));
+      } catch (err) {
+        console.warn('[AssessmentRunner] Fallback evaluation used:', err);
+        const session = scoreAssessmentResponses(
+          patient.id || 'P001',
+          allResponses,
+          sessionStartTimeRef.current,
+          new Date().toISOString()
+        );
 
-      navigate('/assessment/result');
+        setAssessmentResult({
+          sessionId: session.sessionId,
+          completedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          overallScore: session.overallScore,
+          domainScores: session.domainScores,
+          aiSummary: session.aiSummary,
+          recommendedActivities: session.recommendedActivities,
+          clinicalNotes: session.clinicalNotes,
+          taskResponses: session.taskResponses,
+        });
+      } finally {
+        setIsEvaluating(false);
+        navigate('/assessment/result');
+      }
     }
   };
 

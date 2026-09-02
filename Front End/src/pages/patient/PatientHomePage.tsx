@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { PatientLayout } from '../../components/layout/PatientLayout';
 import { Card } from '../../components/common/Card';
 import { SpeechSpeaker } from '../../components/common/SpeechSpeaker';
+import { apiService, BackendRecommendationResult } from '../../services/apiService';
 import {
   Brain,
   BookOpen,
@@ -15,10 +16,21 @@ import {
   Pill,
   Sun,
   Volume2,
+  ShieldCheck,
+  TrendingUp,
 } from 'lucide-react';
 
 export const PatientHomePage: React.FC = () => {
   const { patient, medicines, routineItems, activities, navigate, t, speakText } = useApp();
+  const [aiRec, setAiRec] = useState<BackendRecommendationResult | null>(null);
+
+  useEffect(() => {
+    apiService.getRecommendation(patient.id || 'P001').then(res => {
+      if (res) {
+        setAiRec(res);
+      }
+    });
+  }, [patient.id]);
 
   const currentHour = new Date().getHours();
   const greetingKey =
@@ -80,6 +92,40 @@ export const PatientHomePage: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* Axiom AI Authoritative Recommendation Card */}
+        {aiRec && (
+          <div
+            onClick={() => navigate(aiRec.gameMapping.route)}
+            className="bg-gradient-to-r from-teal-900 via-slate-900 to-indigo-950 text-white rounded-3xl p-5 sm:p-6 shadow-xl border border-teal-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 cursor-pointer hover:border-teal-400 transition-all hover:scale-[1.01]"
+          >
+            <div className="flex items-start gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-teal-500/20 border border-teal-400/40 text-teal-300 flex items-center justify-center text-3xl flex-shrink-0">
+                🧠
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-black uppercase tracking-wider bg-amber-400 text-slate-950 px-2.5 py-0.5 rounded-full">
+                    Axiom AI Focus
+                  </span>
+                  <span className="text-xs text-teal-300 font-bold capitalize">
+                    {aiRec.focusDomain.replace('_', ' ')} • Tier {aiRec.gameMapping.difficultyTier} ({aiRec.gameMapping.difficultyLabel})
+                  </span>
+                </div>
+                <h3 className="text-lg sm:text-xl font-black text-white">
+                  {aiRec.gameMapping.gameTitle}
+                </h3>
+                <p className="text-xs sm:text-sm text-slate-300 font-medium leading-relaxed max-w-xl">
+                  {aiRec.performance.message} Recommended activity calibrated by machine learning with adaptive safety limits.
+                </p>
+              </div>
+            </div>
+            <button className="px-4 py-2 rounded-2xl bg-teal-500 hover:bg-teal-400 text-slate-950 font-black text-xs sm:text-sm flex items-center gap-1.5 shadow-md flex-shrink-0 cursor-pointer">
+              <span>Start Activity</span>
+              <ArrowRight size={16} />
+            </button>
+          </div>
+        )}
 
         {/* Next Up Highlight Card */}
         <div

@@ -7,6 +7,7 @@ import {
 import { gamesLibrary } from '../data/gamesLibraryData';
 import { CognitiveDomain } from '../types';
 import { calculateDifficulty, getDifficultyTier, getDifficultyLabel, calculateCognitiveLoad } from './levelGenerator';
+import { apiService } from './apiService';
 
 const STORAGE_KEY = 'axiom_game_progress_v2';
 const RESULTS_KEY = 'axiom_game_results_log_v2';
@@ -275,7 +276,7 @@ export function recordLevelCompletion(
     isLevelMilestone: level === 100 || level % 25 === 0,
   };
 
-  // Save to results log
+  // Save to local results log
   try {
     if (typeof window !== 'undefined' && window.localStorage) {
       const existingLogs = JSON.parse(window.localStorage.getItem(RESULTS_KEY) || '[]');
@@ -285,6 +286,22 @@ export function recordLevelCompletion(
   } catch (e) {
     console.warn('Could not save result record log:', e);
   }
+
+  // Sync session result asynchronously to Backend and Axiom AI session tracker
+  apiService
+    .recordGameSession({
+      patientId: patientId || 'P001',
+      gameId,
+      gameTitle: resultRecord.gameTitle,
+      domain: resultRecord.category,
+      level,
+      difficultyTier: getDifficultyTier(level),
+      score,
+      accuracy,
+      durationSeconds,
+      hintsUsed,
+    })
+    .catch(err => console.warn('[GameProgression] Session sync to backend skipped:', err));
 
   return resultRecord;
 }

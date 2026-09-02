@@ -5,14 +5,14 @@ Connects detected intents to actual patient data
 and application functionality.
 """
 
-from assistant_data import (
+from .assistant_data import (
     get_next_medicine,
     get_today_schedule,
     get_caregiver,
     get_memory_information,
 )
 
-from recommendation_engine import (
+from .recommendation_engine import (
     generate_recommendation,
 )
 
@@ -234,7 +234,7 @@ def handle_intent(
 
 if __name__ == "__main__":
 
-    from patient import Patient
+    from .patient import Patient
 
 
     patient = Patient(

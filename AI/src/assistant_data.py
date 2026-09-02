@@ -5,7 +5,7 @@ Provides patient-specific information to assistant actions.
 Prototype only.
 """
 
-from patient import Patient
+from .patient import Patient
 
 
 def get_next_medicine(patient: Patient):

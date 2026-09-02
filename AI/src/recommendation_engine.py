@@ -44,7 +44,8 @@ PREPROCESSOR_FILE = BASE_DIR / "models" / "preprocessor.pkl"
 # Load resources
 # ---------------------------------
 
-df = pd.read_csv(DATA_FILE)
+def load_data():
+    return pd.read_csv(DATA_FILE)
 
 model = joblib.load(MODEL_FILE)
 preprocessor = joblib.load(PREPROCESSOR_FILE)
@@ -59,6 +60,8 @@ def get_domain_features(patient_id, domain):
     Collect recent performance features for a patient
     in a particular cognitive domain.
     """
+
+    df = load_data()
 
     history = df[
         (df["patient_id"] == patient_id)

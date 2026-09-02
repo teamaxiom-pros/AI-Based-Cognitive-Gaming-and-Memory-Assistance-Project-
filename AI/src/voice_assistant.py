@@ -16,11 +16,11 @@ Response
 Text-to-Speech
 """
 
-from voice_input import listen
-from assistant_intent import process_message
-from assistant_actions import handle_intent
-from voice_output import speak
-from patient import Patient
+from .voice_input import listen
+from .assistant_intent import process_message
+from .assistant_actions import handle_intent
+from .voice_output import speak
+from .patient import Patient
 
 
 def create_demo_patient():

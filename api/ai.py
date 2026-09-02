@@ -28,5 +28,7 @@ def root():
 
 @app.post("/ai/process")
 @app.post("/api/ai/process")
+@app.post("/process")
 def process_ai_request(request: dict):
     return process_request(request)
+

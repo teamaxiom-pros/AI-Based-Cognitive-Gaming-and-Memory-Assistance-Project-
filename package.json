@@ -5,8 +5,8 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc && npm --prefix \"Front End\" run build",
-    "build:frontend": "npm --prefix \"Front End\" run build",
+    "build": "npm --prefix \"Front End\" install && tsc && npm --prefix \"Front End\" run build",
+    "build:frontend": "npm --prefix \"Front End\" install && npm --prefix \"Front End\" run build",
     "build:backend": "tsc",
     "start": "node dist/server.js",
     "db:generate": "prisma generate",
@@ -20,6 +20,9 @@
     "schema": "prisma/schema.prisma",
     "seed": "tsx src/db/seed.ts"
   },
+  "workspaces": [
+    "Front End"
+  ],
   "engines": {
     "node": ">=20"
   },

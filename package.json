@@ -5,7 +5,9 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc",
+    "build": "tsc && npm --prefix \"Front End\" run build",
+    "build:frontend": "npm --prefix \"Front End\" run build",
+    "build:backend": "tsc",
     "start": "node dist/server.js",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",

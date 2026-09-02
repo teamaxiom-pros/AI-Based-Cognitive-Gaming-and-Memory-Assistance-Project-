@@ -3,7 +3,9 @@ import { GameRecommendation } from '../types/gameTypes';
 import { evaluateAssessment } from './assessmentEngine';
 import { getPersonalizedRecommendations } from './gameRecommendationService';
 
-const BACKEND_BASE_URL = 'http://localhost:3000/api';
+const BACKEND_BASE_URL =
+  (import.meta as any).env?.VITE_BACKEND_URL ||
+  (typeof window !== 'undefined' ? '/api' : 'http://localhost:3000/api');
 
 export interface BackendHealthStatus {
   status: string;
@@ -106,7 +108,8 @@ class ApiService {
     preferredActivity?: string
   ): Promise<BackendRecommendationResult | null> {
     try {
-      const url = new URL(`${BACKEND_BASE_URL}/recommendation/${patientId}`);
+      const baseOrigin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+      const url = new URL(`${BACKEND_BASE_URL}/recommendation/${patientId}`, baseOrigin);
       if (preferredActivity) {
         url.searchParams.append('preferredActivity', preferredActivity);
       }

@@ -147,3 +147,42 @@ export function mapAiActivityToGame(
     difficultyLabel,
   };
 }
+
+const FRONTEND_GAME_TO_AI_ACTIVITY_MAP: Record<
+  string,
+  { activity: string; domain: string }
+> = {
+  'memory-match': { activity: 'card_match', domain: 'memory' },
+  'picture-recall': { activity: 'story_recall', domain: 'memory' },
+  'object-recall': { activity: 'item_recall', domain: 'memory' },
+  'attention-finder': { activity: 'target_tap', domain: 'attention' },
+  'attention-search': { activity: 'target_tap', domain: 'attention' },
+  'odd-one-out': { activity: 'odd_one_out', domain: 'attention' },
+  'sequence-builder': { activity: 'sequence_builder', domain: 'executive_function' },
+  'pattern-sequence': { activity: 'sequence_builder', domain: 'executive_function' },
+  'category-sorting': { activity: 'sorting_sprint', domain: 'processing_speed' },
+  'object-recognition': { activity: 'object_recognition', domain: 'recognition' },
+  'spatial-memory': { activity: 'familiar_image', domain: 'recognition' },
+  'number-memory': { activity: 'quick_tap', domain: 'processing_speed' },
+  'pattern-recall': { activity: 'sequence_builder', domain: 'executive_function' },
+  'symbol-matching': { activity: 'card_match', domain: 'memory' },
+  'word-recall': { activity: 'story_recall', domain: 'memory' },
+};
+
+/**
+ * Maps a frontend game identifier to official AI activity name and cognitive domain.
+ */
+export function mapFrontendGameToAiActivity(
+  gameId: string,
+  fallbackDomain: string = 'memory'
+): { activity: string; domain: string } {
+  const normalized = (gameId || '').toLowerCase().trim();
+  if (FRONTEND_GAME_TO_AI_ACTIVITY_MAP[normalized]) {
+    return FRONTEND_GAME_TO_AI_ACTIVITY_MAP[normalized];
+  }
+  return {
+    activity: normalized.replace(/-/g, '_'),
+    domain: fallbackDomain,
+  };
+}
+

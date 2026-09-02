@@ -22,12 +22,24 @@ export const UniversalGamePlayer: React.FC<UniversalGamePlayerProps> = ({
   initialGameId = 'memory-match',
   initialLevel,
 }) => {
-  const { patient, navigate, recordActivityPlay, showToast } = useApp();
+  const { patient, navigate, currentRoute, recordActivityPlay, showToast } = useApp();
   const [activeGameId, setActiveGameId] = useState<GameCategory>(initialGameId);
   const [gameProgress, setGameProgress] = useState(() => getGameProgress(activeGameId));
-  const [currentLevel, setCurrentLevel] = useState(
-    initialLevel || gameProgress.currentLevel || 1
+
+  const queryParams = new URLSearchParams(
+    currentRoute.includes('?') ? currentRoute.split('?')[1] : typeof window !== 'undefined' ? window.location.search : ''
   );
+  const parsedLevel = queryParams.get('level') ? parseInt(queryParams.get('level')!, 10) : undefined;
+
+  const [currentLevel, setCurrentLevel] = useState(
+    effectiveInitialLevel(initialLevel, parsedLevel, gameProgress.currentLevel)
+  );
+
+  function effectiveInitialLevel(propLvl?: number, queryLvl?: number, progressLvl?: number): number {
+    if (propLvl && propLvl >= 1) return propLvl;
+    if (queryLvl && queryLvl >= 1) return queryLvl;
+    return progressLvl || 1;
+  }
 
   const gameDef = gamesLibrary.find(g => g.id === activeGameId) || gamesLibrary[0];
   const levelConfig = calculateDifficulty(activeGameId, currentLevel);

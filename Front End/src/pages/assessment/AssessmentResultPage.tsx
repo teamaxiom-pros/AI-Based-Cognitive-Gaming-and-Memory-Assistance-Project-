@@ -144,7 +144,7 @@ export const AssessmentResultPage: React.FC = () => {
             {recommendedGames.slice(0, 4).map((game, gIdx) => (
               <button
                 key={gIdx}
-                onClick={() => navigate(`/patient/games/${game?.id}`)}
+                onClick={() => navigate(`/activities/${game?.id}`)}
                 className="bg-white/10 hover:bg-white/20 backdrop-blur-md rounded-2xl p-3.5 border border-white/15 flex items-center gap-3 text-left cursor-pointer transition-all active:scale-98"
               >
                 <span className="text-3xl">{game?.icon || '🎮'}</span>

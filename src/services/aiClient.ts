@@ -1,7 +1,11 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+const AI_SERVICE_URL =
+  process.env.AI_SERVICE_URL ||
+  (process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : 'http://localhost:8000');
 const AI_TIMEOUT_MS = parseInt(process.env.AI_SERVICE_TIMEOUT_MS || '15000', 10);
 
 export interface AiProcessRequest {

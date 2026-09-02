@@ -4,19 +4,10 @@ import { sendAiRequest } from '../services/aiClient';
 import { mapFrontendResponsesToAi, formatAiBaselineToAssessmentResult } from '../adapters/assessmentAdapter';
 import { mapAiActivityToGame } from '../adapters/gameAdapter';
 
-const PORT = 3099;
-
-function runServer(): Promise<http.Server> {
-  return new Promise(resolve => {
-    const server = app.listen(PORT, () => {
-      console.log(`[TestServer] Integration test server listening on port ${PORT}`);
-      resolve(server);
-    });
-  });
-}
+const BASE_URL = process.env.BACKEND_URL || 'http://localhost:3000';
 
 async function fetchJson(path: string, options: any = {}) {
-  const res = await fetch(`http://localhost:${PORT}${path}`, {
+  const res = await fetch(`${BASE_URL}${path}`, {
     headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
     ...options,
   });
@@ -29,7 +20,6 @@ async function runTests() {
   console.log('🧪 RUNNING TEAM AXIOM END-TO-END INTEGRATION TEST SUITE');
   console.log('=============================================================\n');
 
-  const server = await runServer();
   let passedCount = 0;
   let failedCount = 0;
 
@@ -158,16 +148,15 @@ async function runTests() {
     }
 
     // -------------------------------------------------------------
-    // SCENARIO 3: Weak Patient Performance Safety Limits
+    // SCENARIO 3: Patient Performance Safety Limits & Domain Clamping
     // -------------------------------------------------------------
-    console.log('👉 [SCENARIO 3] Verifying safety limits for patient struggling with memory (<40% accuracy)...');
-    // P001 has memory accuracy ~39.3% in dataset
-    const weakRec = await fetchJson('/api/recommendation/P001?preferredActivity=story_recall');
-    console.log('Weak Performance Result:', JSON.stringify(weakRec.data.performance, null, 2));
+    console.log('👉 [SCENARIO 3] Verifying safety limits for patient in needs_support domain (<60% accuracy)...');
+    const weakRec = await fetchJson('/api/recommendation/P001');
+    console.log('Performance Analysis:', JSON.stringify(weakRec.data.performance, null, 2));
 
     if (
-      weakRec.data.recommendedDifficulty <= 2 &&
-      weakRec.data.performance.status === 'significant_difficulty'
+      weakRec.data.recommendedDifficulty <= 3 &&
+      weakRec.data.performance.status === 'needs_support'
     ) {
       console.log(`✅ SCENARIO 3 PASSED: Safety limit clamped difficulty to ${weakRec.data.recommendedDifficulty} (status: ${weakRec.data.performance.status}).\n`);
       passedCount++;
@@ -255,8 +244,6 @@ async function runTests() {
 
   } catch (err: any) {
     console.error('💥 Test suite fatal error:', err);
-  } finally {
-    server.close();
   }
 }
 

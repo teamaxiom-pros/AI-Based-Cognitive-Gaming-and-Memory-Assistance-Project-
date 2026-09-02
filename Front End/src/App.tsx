@@ -35,7 +35,8 @@ export const App: React.FC = () => {
   const { currentRoute, toastMessage } = useApp();
 
   const renderRoute = () => {
-    switch (currentRoute) {
+    const routeBase = currentRoute.split('?')[0];
+    switch (routeBase) {
       case '/welcome':
         return <WelcomePage />;
       case '/onboarding/flow':

@@ -31,8 +31,9 @@ export const PlayGamePage: React.FC<PlayGamePageProps> = ({ gameId = 'memory-mat
     '/activities/symbol-matching': 'symbol-matching',
   };
 
-  if (routeMap[currentRoute]) {
-    resolvedGameId = routeMap[currentRoute];
+  const routeBase = currentRoute.split('?')[0];
+  if (routeMap[routeBase]) {
+    resolvedGameId = routeMap[routeBase];
   }
 
   const gameDef = gamesLibrary.find(g => g.id === resolvedGameId) || gamesLibrary[0];

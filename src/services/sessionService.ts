@@ -48,7 +48,12 @@ const defaultPatient: PatientProfileRecord = {
 patientStore.set('P001', defaultPatient);
 patientStore.set('patient-asha-001', { ...defaultPatient, id: 'patient-asha-001' });
 
-const CSV_FILE_PATH = path.resolve(__dirname, '../../AI/data/patient_sessions.csv');
+import { mapFrontendGameToAiActivity } from '../adapters/gameAdapter';
+
+// Resolve path to AI dataset
+const CSV_FILE_PATH = fs.existsSync(path.resolve(process.cwd(), 'AI/data/patient_sessions.csv'))
+  ? path.resolve(process.cwd(), 'AI/data/patient_sessions.csv')
+  : path.resolve(__dirname, '../../AI/data/patient_sessions.csv');
 
 /**
  * Gets or creates a patient profile.
@@ -98,33 +103,43 @@ export function recordCompletedGameSession(session: RecordedGameSession): void {
   list.unshift(session);
   gameSessionStore.set(session.patientId, list);
 
+  // Map to AI activity and domain
+  const { activity: aiActivity, domain: aiDomain } = mapFrontendGameToAiActivity(
+    session.gameId,
+    session.domain
+  );
+
   // Attempt to append session to AI patient_sessions.csv for continuous ML learning
   try {
     if (fs.existsSync(CSV_FILE_PATH)) {
+      const accuracyNormalized = Math.max(0, Math.min(1, session.accuracy / 100));
+      const responseTimeSec = Math.max(1, session.durationSeconds);
+      const sessionNumber = list.length + 2; // Progressive session index
+
       const csvLine = [
         session.patientId,
         session.sessionId.slice(0, 8),
-        list.length,
-        session.domain,
-        session.gameId.replace(/-/g, '_'),
-        session.difficultyTier,
-        (session.accuracy / 100).toFixed(3),
-        session.durationSeconds.toFixed(2),
+        sessionNumber,
+        aiDomain,
+        aiActivity,
+        session.difficultyTier || 1,
+        accuracyNormalized.toFixed(3),
+        responseTimeSec.toFixed(2),
         1,
-        session.hintsUsed,
+        session.hintsUsed || 0,
         1,
         'happy',
-        (session.accuracy / 100).toFixed(3),
-        session.durationSeconds.toFixed(2),
-        (session.accuracy / 100).toFixed(3),
-        session.durationSeconds.toFixed(2),
+        accuracyNormalized.toFixed(3),
+        responseTimeSec.toFixed(2),
+        accuracyNormalized.toFixed(3),
+        responseTimeSec.toFixed(2),
         '0.0',
-        session.difficultyTier,
+        session.difficultyTier || 1,
         new Date().toISOString(),
       ].join(',');
 
       fs.appendFileSync(CSV_FILE_PATH, `\n${csvLine}`, 'utf8');
-      console.log(`[SessionService] Appended session to ${CSV_FILE_PATH}`);
+      console.log(`[SessionService] Appended session for ${session.patientId} (${aiActivity} in ${aiDomain}) to ${CSV_FILE_PATH}`);
     }
   } catch (err: any) {
     console.warn('[SessionService] Could not append to CSV:', err.message);

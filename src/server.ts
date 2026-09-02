@@ -8,10 +8,10 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Enable CORS for Frontend (port 5173, localhost, etc.)
+// Enable CORS for Frontend (development & production on Vercel)
 app.use(
   cors({
-    origin: ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3000'],
+    origin: true,
     credentials: true,
   })
 );
@@ -45,8 +45,18 @@ app.get('/', (_req, res) => {
   });
 });
 
-// Start listening if run directly
-if (process.env.NODE_ENV !== 'test') {
+// Start listening only when run directly as standalone server (not in Vercel serverless, tests, or index imports)
+const isMainModule =
+  process.argv[1] &&
+  (process.argv[1].endsWith('server.ts') ||
+    process.argv[1].endsWith('server.js') ||
+    process.env.STANDALONE_SERVER === 'true');
+
+if (
+  process.env.VERCEL !== '1' &&
+  process.env.NODE_ENV !== 'test' &&
+  isMainModule
+) {
   app.listen(PORT, () => {
     console.log(`=======================================================`);
     console.log(`🚀 Team Axiom Backend running at: http://localhost:${PORT}`);

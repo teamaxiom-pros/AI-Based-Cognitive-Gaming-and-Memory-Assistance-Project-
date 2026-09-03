@@ -14,7 +14,8 @@ export const translations = {
 export type TranslationKey = typeof en;
 
 export function getNestedTranslation(obj: any, path: string): string {
-  const parts = path.split('.');
+  if (!obj || typeof obj !== 'object' || !path) return path || '';
+  const parts = String(path).split('.');
   let current = obj;
   for (const part of parts) {
     if (current && typeof current === 'object' && part in current) {
@@ -26,11 +27,12 @@ export function getNestedTranslation(obj: any, path: string): string {
   return typeof current === 'string' ? current : path;
 }
 
-export function formatString(template: string, params?: Record<string, string | number>): string {
+export function formatString(template?: string | null, params?: Record<string, string | number>): string {
+  if (!template || typeof template !== 'string') return typeof template === 'string' ? template : '';
   if (!params) return template;
   let result = template;
   for (const [key, value] of Object.entries(params)) {
-    result = result.replace(new RegExp(`\\{${key}\\}`, 'g'), String(value));
+    result = result.replace(new RegExp(`\\{${key}\\}`, 'g'), String(value ?? ''));
   }
   return result;
 }

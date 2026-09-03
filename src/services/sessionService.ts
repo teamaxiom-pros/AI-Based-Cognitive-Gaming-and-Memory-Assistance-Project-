@@ -111,6 +111,44 @@ export async function saveAssessmentResult(result: AssessmentResultOutput): Prom
       rawAiBaseline: result.rawAiBaseline,
     }
   );
+
+  // 3. Sync domain baseline entries to AI dataset for subsequent ML difficulty prediction
+  try {
+    if (fs.existsSync(CSV_FILE_PATH) && Array.isArray(result.taskResponses)) {
+      for (const tr of result.taskResponses) {
+        const accuracyNormalized = Math.max(0, Math.min(1, (tr.score ?? 80) / 100));
+        const responseTimeSec = Math.max(1, (tr.responseTimeMs || 3000) / 1000);
+        const { activity: aiActivity, domain: aiDomain } = mapFrontendGameToAiActivity(
+          tr.taskId || 'assessment-task',
+          tr.domain || 'memory'
+        );
+        const csvLine = [
+          result.patientId,
+          `init-${tr.domain.slice(0, 4)}`,
+          1,
+          aiDomain,
+          aiActivity,
+          1,
+          accuracyNormalized.toFixed(3),
+          responseTimeSec.toFixed(2),
+          1,
+          tr.hintsUsed || 0,
+          1,
+          'neutral',
+          accuracyNormalized.toFixed(3),
+          responseTimeSec.toFixed(2),
+          accuracyNormalized.toFixed(3),
+          responseTimeSec.toFixed(2),
+          '0.0',
+          1,
+          new Date().toISOString(),
+        ].join(',');
+        fs.appendFileSync(CSV_FILE_PATH, `\n${csvLine}`, 'utf8');
+      }
+    }
+  } catch (err: any) {
+    console.warn('[SessionService] Could not append assessment baseline to CSV:', err.message);
+  }
 }
 
 /**

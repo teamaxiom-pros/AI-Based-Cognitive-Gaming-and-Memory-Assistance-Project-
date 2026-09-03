@@ -41,7 +41,8 @@ export const PatientHomePage: React.FC = () => {
       ? 'home.greetingAfternoon'
       : 'home.greetingEvening';
 
-  const greetingText = t(greetingKey, { name: patient.name.split(' ')[0] }) || `Hello, ${patient.name.split(' ')[0]}`;
+  const firstName = patient?.name ? patient.name.split(' ')[0] : 'Friend';
+  const greetingText = t(greetingKey, { name: firstName }) || `Hello, ${firstName}`;
   const completedMeds = medicines.filter(m => m.isTakenToday).length;
   const completedRoutine = routineItems.filter(r => r.isCompleted).length;
 
@@ -107,7 +108,7 @@ export const PatientHomePage: React.FC = () => {
         {/* 2. Axiom AI Authoritative Recommendation Card */}
         {aiRec ? (
           <div
-            onClick={() => navigate(aiRec.gameMapping.route)}
+            onClick={() => navigate(aiRec.gameMapping?.route || '/activities')}
             className="bg-white rounded-3xl p-6 border-2 border-teal-500/80 shadow-md hover:shadow-lg transition-all duration-200 cursor-pointer group"
           >
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5">
@@ -121,14 +122,14 @@ export const PatientHomePage: React.FC = () => {
                       Today's AI Focus
                     </span>
                     <span className="text-xs text-slate-500 font-semibold capitalize">
-                      {aiRec.focusDomain.replace('_', ' ')} • Level {aiRec.gameMapping.suggestedLevel}
+                      {(aiRec.focusDomain || 'memory').replace(/_/g, ' ')} • Level {aiRec.gameMapping?.suggestedLevel || 1}
                     </span>
                   </div>
                   <h3 className="text-lg sm:text-xl font-black text-slate-900 group-hover:text-teal-700 transition-colors">
-                    {aiRec.gameMapping.gameTitle}
+                    {aiRec.gameMapping?.gameTitle || 'Assam Heritage Memory Match'}
                   </h3>
                   <p className="text-xs sm:text-sm text-slate-600 leading-relaxed max-w-xl">
-                    {aiRec.performance.message || 'Personalized cognitive exercise tailored to your baseline.'}
+                    {aiRec.performance?.message || 'Personalized cognitive exercise tailored to your baseline.'}
                   </p>
                 </div>
               </div>

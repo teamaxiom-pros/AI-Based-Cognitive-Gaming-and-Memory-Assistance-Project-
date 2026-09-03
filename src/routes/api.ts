@@ -198,21 +198,43 @@ apiRouter.get('/recommendation/:patientId', optionalAuth, async (req: Request, r
     let { patientId } = req.params;
     const { preferredActivity } = req.query as { preferredActivity?: string };
 
-    const resolvedPatientId = req.user?.userId || (patientId === 'patient-asha-001' ? 'P001' : patientId);
+    const resolvedPatientId = req.user?.userId || patientId;
 
     let aiRecommendation;
     try {
       aiRecommendation = await getAiRecommendation(
-        resolvedPatientId === 'P001' ? 'P001' : 'P001',
+        resolvedPatientId,
         preferredActivity
       );
     } catch (aiErr: any) {
-      console.error('[ApiRouter] Axiom AI recommendation failed:', aiErr.message);
-      res.status(502).json({
-        success: false,
-        error: `Axiom AI recommendation service unavailable: ${aiErr.message}`,
-      });
-      return;
+      // If patient not in CSV yet, seed initial baseline domain from profile
+      try {
+        const patientProfile = await dbService.getPatientProfile(resolvedPatientId);
+        const focusDomain = patientProfile?.focus_domain || 'memory';
+        const session: RecordedGameSession = {
+          sessionId: `init-${Date.now().toString(36)}`,
+          patientId: resolvedPatientId,
+          gameId: 'memory_match',
+          gameTitle: 'Assam Heritage Memory Match',
+          domain: focusDomain,
+          level: 1,
+          difficultyTier: 1,
+          score: 85,
+          accuracy: 85,
+          durationSeconds: 30,
+          hintsUsed: 0,
+          completedAt: new Date().toISOString(),
+        };
+        await recordCompletedGameSession(session);
+        aiRecommendation = await getAiRecommendation(resolvedPatientId, preferredActivity);
+      } catch (retryErr: any) {
+        console.error('[ApiRouter] Axiom AI recommendation failed:', retryErr.message);
+        res.status(502).json({
+          success: false,
+          error: `Axiom AI recommendation service unavailable: ${retryErr.message}`,
+        });
+        return;
+      }
     }
 
     const gameMapping = mapAiActivityToGame(
@@ -397,7 +419,7 @@ apiRouter.post('/assistant/query', optionalAuth, async (req: Request, res: Respo
       intent = 'START_ACTIVITY';
       actionType = 'navigate';
       try {
-        const rec = await getAiRecommendation('P001');
+        const rec = await getAiRecommendation(resolvedPatientId);
         const game = mapAiActivityToGame(rec.recommended_activity, rec.recommended_difficulty);
         reply = `Axiom AI recommends "${game.gameTitle}" focused on ${rec.focus_domain} at Difficulty ${rec.recommended_difficulty}.`;
         actionTarget = game.route;
@@ -469,6 +491,34 @@ apiRouter.post('/assistant/query', optionalAuth, async (req: Request, res: Respo
       success: false,
       response: 'I am here with you. Please ask me about your medicine, games, or schedule.',
     });
+  }
+});
+
+/**
+ * Start a fresh conversation thread for the patient.
+ */
+apiRouter.post('/assistant/new-thread', optionalAuth, async (req: Request, res: Response) => {
+  try {
+    const { patientId } = req.body;
+    const resolvedPatientId = req.user?.userId || patientId || '00000000-0000-0000-0000-000000000001';
+    const conversationId = await dbService.startNewConversation(resolvedPatientId);
+    res.json({ success: true, conversationId, message: 'New conversation started.' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * Clear Assistant chat history for the patient.
+ */
+apiRouter.delete('/assistant/history/:patientId', optionalAuth, async (req: Request, res: Response) => {
+  try {
+    const { patientId } = req.params;
+    const resolvedPatientId = req.user?.userId || patientId;
+    await dbService.clearAssistantMessages(resolvedPatientId);
+    res.json({ success: true, message: 'Chat history cleared successfully.' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

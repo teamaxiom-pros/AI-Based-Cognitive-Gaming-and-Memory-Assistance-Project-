@@ -14,14 +14,14 @@ export const CognitiveAnalyticsPage: React.FC = () => {
   const resultsLog = loadGameResultsLog();
 
   const scores = assessmentResult?.domainScores;
-  const memoryScore = scores?.recall?.score || scores?.memory?.score || 80;
-  const attentionScore = scores?.attention?.score || 85;
-  const sequencingScore = scores?.sequencing?.score || 80;
-  const recognitionScore = scores?.recognition?.score || 85;
-  const orientationScore = scores?.orientation?.score || 85;
+  const memoryScore = scores?.recall?.score || scores?.memory?.score || (assessmentResult ? 80 : 0);
+  const attentionScore = scores?.attention?.score || (assessmentResult ? 85 : 0);
+  const sequencingScore = scores?.sequencing?.score || (assessmentResult ? 80 : 0);
+  const recognitionScore = scores?.recognition?.score || (assessmentResult ? 85 : 0);
+  const orientationScore = scores?.orientation?.score || (assessmentResult ? 85 : 0);
 
   // Real trend points based on assessment sessions and game results
-  const trendPoints = [
+  const trendPoints = assessmentResult ? [
     { date: 'Initial Baseline', memory: memoryScore, attention: attentionScore, recognition: recognitionScore, sequencing: sequencingScore },
     {
       date: 'Current Level',
@@ -30,7 +30,7 @@ export const CognitiveAnalyticsPage: React.FC = () => {
       recognition: Math.min(100, recognitionScore + 2),
       sequencing: Math.min(100, sequencingScore + 5),
     },
-  ];
+  ] : [];
 
   return (
     <CaregiverLayout activeTab="cognition">

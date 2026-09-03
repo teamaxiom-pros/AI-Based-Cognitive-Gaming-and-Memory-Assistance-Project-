@@ -502,6 +502,25 @@ export const dbService = {
     return data || [];
   },
 
+  async startNewConversation(patientId: string): Promise<string> {
+    const newId = `conv-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+    await supabaseAdmin.from('assistant_conversations').insert({
+      id: newId,
+      patient_id: patientId,
+      title: `Axiom Assistant Chat (${new Date().toLocaleDateString()})`,
+      updated_at: new Date().toISOString(),
+    });
+    return newId;
+  },
+
+  async clearAssistantMessages(patientId: string) {
+    await supabaseAdmin
+      .from('assistant_messages')
+      .delete()
+      .eq('patient_id', patientId);
+    return true;
+  },
+
   async saveAssistantMessage(msg: {
     conversationId: string;
     patientId: string;
@@ -521,7 +540,9 @@ export const dbService = {
       action_target: msg.actionTarget || null,
       created_at: new Date().toISOString(),
     });
-    if (error) console.warn('[SupabaseBackend] Error saving assistant message:', error.message);
+    if (error) {
+      console.warn('[SupabaseBackend] Error saving assistant message:', error.message);
+    }
     return data;
   },
 };

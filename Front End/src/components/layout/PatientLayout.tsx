@@ -96,7 +96,7 @@ export const PatientLayout: React.FC<PatientLayoutProps> = ({
                     </span>
                   </div>
                   <div className="text-[11px] text-slate-500 font-medium">
-                    {patient.location}
+                    {patient?.location || 'Assam (NER)'}
                   </div>
                 </div>
               </div>
@@ -135,7 +135,7 @@ export const PatientLayout: React.FC<PatientLayoutProps> = ({
           <div className="flex items-center gap-2.5">
             {/* Voice Briefing Button */}
             <button
-              onClick={() => speakText(`Hello ${patient.name}, today is ${currentTime}. You have active brain games and routine items today.`)}
+              onClick={() => speakText(`Hello ${patient?.name || 'there'}, today is ${currentTime}. You have active brain games and routine items today.`)}
               className="p-2 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-700 transition-colors cursor-pointer border border-teal-200"
               title="Voice Briefing"
             >
@@ -180,20 +180,26 @@ export const PatientLayout: React.FC<PatientLayoutProps> = ({
                 onClick={() => setShowUserMenu(!showUserMenu)}
                 className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 p-1.5 pr-3 rounded-full border border-slate-200 transition-colors cursor-pointer select-none"
               >
-                <img
-                  src={patient.photoUrl}
-                  alt={patient.name}
-                  className="w-7 h-7 rounded-full object-cover ring-2 ring-teal-500"
-                />
+                {patient?.photoUrl ? (
+                  <img
+                    src={patient.photoUrl}
+                    alt={patient?.name || 'Patient'}
+                    className="w-7 h-7 rounded-full object-cover ring-2 ring-teal-500"
+                  />
+                ) : (
+                  <div className="w-7 h-7 rounded-full bg-teal-600 text-white flex items-center justify-center font-bold text-xs">
+                    {(patient?.name || 'P')[0]}
+                  </div>
+                )}
                 <span className="font-bold text-xs text-slate-800 hidden sm:inline">
-                  {patient.name.split(' ')[0]}
+                  {patient?.name ? patient.name.split(' ')[0] : 'Patient'}
                 </span>
               </div>
 
               {showUserMenu && (
                 <div className="absolute right-0 mt-2 w-52 bg-white border border-slate-200 rounded-2xl shadow-xl py-2 z-50 animate-fadeIn space-y-1">
                   <div className="px-4 py-2 border-b border-slate-100">
-                    <p className="text-xs font-bold text-slate-900 truncate">{patient.name}</p>
+                    <p className="text-xs font-bold text-slate-900 truncate">{patient?.name || 'Patient User'}</p>
                     <p className="text-[11px] text-teal-700 font-medium">Patient Account</p>
                   </div>
 

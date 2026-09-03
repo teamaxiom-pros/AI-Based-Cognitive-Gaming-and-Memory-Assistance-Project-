@@ -212,9 +212,48 @@ class ApiService {
   }
 
   /**
+   * Starts a fresh assistant conversation thread.
+   */
+  async startNewAssistantThread(patientId: string) {
+    try {
+      const headers = await this.getAuthHeaders();
+      const res = await fetch(`${BACKEND_BASE_URL}/assistant/new-thread`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ patientId }),
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      return { success: false };
+    } catch {
+      return { success: false };
+    }
+  }
+
+  /**
+   * Clears assistant history for a patient.
+   */
+  async clearAssistantHistory(patientId: string) {
+    try {
+      const headers = await this.getAuthHeaders();
+      const res = await fetch(`${BACKEND_BASE_URL}/assistant/history/${patientId}`, {
+        method: 'DELETE',
+        headers,
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      return { success: false };
+    } catch {
+      return { success: false };
+    }
+  }
+
+  /**
    * Retrieves persistent Assistant chat history from Supabase.
    */
-  async getAssistantHistory(patientId: string = 'P001') {
+  async getAssistantHistory(patientId: string) {
     try {
       const headers = await this.getAuthHeaders();
       const res = await fetch(`${BACKEND_BASE_URL}/assistant/history/${patientId}`, {

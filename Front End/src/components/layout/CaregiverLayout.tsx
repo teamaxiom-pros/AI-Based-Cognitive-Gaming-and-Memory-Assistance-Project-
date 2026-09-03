@@ -79,7 +79,7 @@ export const CaregiverLayout: React.FC<CaregiverLayoutProps> = ({
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs bg-indigo-900 text-indigo-200 px-2 py-1 rounded-md font-semibold">
-              {patient.name.split(' ')[0]}
+              {patient?.name ? patient.name.split(' ')[0] : 'Patient'}
             </span>
           </div>
         </div>
@@ -105,14 +105,20 @@ export const CaregiverLayout: React.FC<CaregiverLayoutProps> = ({
 
           {/* Active Patient Card in Sidebar */}
           <div className="p-4 mx-3 my-3 bg-slate-800/80 rounded-2xl border border-slate-700/60 flex items-center gap-3">
-            <img
-              src={patient.photoUrl}
-              alt={patient.name}
-              className="w-11 h-11 rounded-full object-cover ring-2 ring-indigo-500"
-            />
+            {patient?.photoUrl ? (
+              <img
+                src={patient.photoUrl}
+                alt={patient?.name || 'Patient'}
+                className="w-11 h-11 rounded-full object-cover ring-2 ring-indigo-500"
+              />
+            ) : (
+              <div className="w-11 h-11 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-sm">
+                {(patient?.name || 'P')[0]}
+              </div>
+            )}
             <div className="overflow-hidden">
-              <div className="font-bold text-white text-sm truncate">{patient.name}</div>
-              <div className="text-xs text-slate-400">Age {patient.age} • {patient.location.split(',')[0]}</div>
+              <div className="font-bold text-white text-sm truncate">{patient?.name || 'Patient User'}</div>
+              <div className="text-xs text-slate-400">Age {patient?.age || 65} • {patient?.location ? patient.location.split(',')[0] : 'Assam'}</div>
               <div className="text-[10px] text-teal-400 font-semibold mt-0.5">● Active Monitoring</div>
             </div>
           </div>
@@ -153,11 +159,11 @@ export const CaregiverLayout: React.FC<CaregiverLayoutProps> = ({
           <div className="p-4 border-t border-slate-800 space-y-2">
             <button
               onClick={() => {
-                showToast(`Calling ${patient.name}...`);
+                showToast(`Calling ${patient?.name || 'Patient'}...`);
               }}
               className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
             >
-              <Phone size={13} /> Call {patient.name.split(' ')[0]}
+              <Phone size={13} /> Call {patient?.name ? patient.name.split(' ')[0] : 'Patient'}
             </button>
             <button
               onClick={() => {

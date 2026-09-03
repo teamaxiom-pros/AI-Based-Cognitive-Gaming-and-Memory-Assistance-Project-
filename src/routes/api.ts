@@ -370,115 +370,145 @@ apiRouter.post('/assistant/query', optionalAuth, async (req: Request, res: Respo
     const resolvedPatientId = req.user?.userId || patientId || 'P001';
     const q = query.toLowerCase().trim();
 
+    let reply = 'Hello! I am your Axiom Cognitive Companion. You can ask me about your medications, today\'s routine, recommended brain games, or appointments.';
+    let intent = 'GENERAL';
+    let actionType: string | undefined = 'speak';
+    let actionTarget: string | undefined = undefined;
+    let gameMapping: any = undefined;
+    let medicine: any = undefined;
+
     // 1. Medicine Query
     if (q.includes('medicine') || q.includes('pill') || q.includes('দৱা') || q.includes('ঔষধ') || q.includes('दवा')) {
       const medicines = await dbService.getMedicines(resolvedPatientId);
       const untaken = medicines.filter(m => !m.is_taken_today);
       const nextMed = untaken[0] || medicines[0];
+      intent = 'MEDICINE_QUERY';
+      actionType = 'navigate';
+      actionTarget = '/medicines';
 
       if (nextMed) {
-        res.json({
-          success: true,
-          intent: 'MEDICINE_QUERY',
-          response: `Your next scheduled medicine is ${nextMed.name} (${nextMed.dosage}) at ${nextMed.time} (${nextMed.schedule}).`,
-          actionType: 'navigate',
-          actionTarget: '/medicines',
-          medicine: nextMed,
-        });
+        reply = `Your next scheduled medicine is ${nextMed.name} (${nextMed.dosage}) at ${nextMed.time} (${nextMed.schedule}).`;
+        medicine = nextMed;
       } else {
-        res.json({
-          success: true,
-          intent: 'MEDICINE_QUERY',
-          response: 'All your medications for today are completed! Keep up the good routine.',
-          actionType: 'navigate',
-          actionTarget: '/medicines',
-        });
+        reply = 'All your medications for today are completed! Keep up the good routine.';
       }
-      return;
-    }
-
-    // 2. Activity / Recommendation Query
-    if (q.includes('recommend') || q.includes('play') || q.includes('game') || q.includes('activity') || q.includes('খেল') || q.includes('खेल')) {
+    } else if (q.includes('recommend') || q.includes('play') || q.includes('game') || q.includes('activity') || q.includes('খেল') || q.includes('खेल')) {
+      // 2. Activity / Recommendation Query
+      intent = 'START_ACTIVITY';
+      actionType = 'navigate';
       try {
         const rec = await getAiRecommendation('P001');
         const game = mapAiActivityToGame(rec.recommended_activity, rec.recommended_difficulty);
-        res.json({
-          success: true,
-          intent: 'START_ACTIVITY',
-          response: `Axiom AI recommends "${game.gameTitle}" focused on ${rec.focus_domain} at Difficulty ${rec.recommended_difficulty}.`,
-          actionType: 'navigate',
-          actionTarget: game.route,
-          gameMapping: game,
-        });
+        reply = `Axiom AI recommends "${game.gameTitle}" focused on ${rec.focus_domain} at Difficulty ${rec.recommended_difficulty}.`;
+        actionTarget = game.route;
+        gameMapping = game;
       } catch (err: any) {
-        res.json({
-          success: true,
-          intent: 'START_ACTIVITY',
-          response: `I recommend trying "Assam Heritage Memory Match" to exercise visual recall.`,
-          actionType: 'navigate',
-          actionTarget: '/activities/memory-match',
-        });
+        reply = `I recommend trying "Assam Heritage Memory Match" to exercise visual recall.`;
+        actionTarget = '/activities/memory-match';
       }
-      return;
-    }
-
-    // 3. Daily Schedule & Routine Query
-    if (q.includes('schedule') || q.includes('today') || q.includes('routine') || q.includes('ৰুটিন') || q.includes('दिनचर्या')) {
+    } else if (q.includes('schedule') || q.includes('today') || q.includes('routine') || q.includes('ৰুটিন') || q.includes('दिनचर्या')) {
+      // 3. Daily Schedule & Routine Query
+      intent = 'TODAY_SCHEDULE';
+      actionType = 'navigate';
+      actionTarget = '/routine';
       const routines = await dbService.getRoutines(resolvedPatientId);
       const appointments = await dbService.getAppointments(resolvedPatientId);
-
       const pendingRoutines = routines.filter(r => !r.completed);
-      const pendingCount = pendingRoutines.length;
-
-      let msg = `You have ${routines.length} routine items today (${pendingCount} remaining).`;
+      let msg = `You have ${routines.length} routine items today (${pendingRoutines.length} remaining).`;
       if (appointments.length > 0) {
         msg += ` You also have an appointment with ${appointments[0].doctor_name} at ${appointments[0].time}.`;
       }
-
-      res.json({
-        success: true,
-        intent: 'TODAY_SCHEDULE',
-        response: msg,
-        actionType: 'navigate',
-        actionTarget: '/routine',
-      });
-      return;
-    }
-
-    // 4. Appointments Query
-    if (q.includes('appointment') || q.includes('doctor') || q.includes('ডাক্তাৰ') || q.includes('डॉक्टर')) {
+      reply = msg;
+    } else if (q.includes('appointment') || q.includes('doctor') || q.includes('ডাক্তাৰ') || q.includes('डॉक्टर')) {
+      // 4. Appointments Query
+      intent = 'APPOINTMENT_QUERY';
+      actionType = 'navigate';
+      actionTarget = '/routine';
       const appointments = await dbService.getAppointments(resolvedPatientId);
       if (appointments.length > 0) {
         const apt = appointments[0];
-        res.json({
-          success: true,
-          intent: 'APPOINTMENT_QUERY',
-          response: `Your upcoming appointment is with ${apt.doctor_name} (${apt.specialty}) on ${apt.date} at ${apt.time} (${apt.location}).`,
-          actionType: 'navigate',
-          actionTarget: '/routine',
-        });
+        reply = `Your upcoming appointment is with ${apt.doctor_name} (${apt.specialty}) on ${apt.date} at ${apt.time} (${apt.location}).`;
       } else {
-        res.json({
-          success: true,
-          intent: 'APPOINTMENT_QUERY',
-          response: 'You have no clinical appointments scheduled for this week.',
-        });
+        reply = 'You have no clinical appointments scheduled for this week.';
       }
-      return;
     }
 
-    // General greeting
+    // Persist conversation & messages in Supabase
+    try {
+      const conversationId = await dbService.getOrCreateConversation(resolvedPatientId);
+      await dbService.saveAssistantMessage({
+        conversationId,
+        patientId: resolvedPatientId,
+        sender: 'user',
+        content: query,
+        intent,
+      });
+      await dbService.saveAssistantMessage({
+        conversationId,
+        patientId: resolvedPatientId,
+        sender: 'assistant',
+        content: reply,
+        intent,
+        actionTarget,
+      });
+    } catch (saveErr) {
+      console.warn('[ApiRouter] Could not persist chat message to DB:', saveErr);
+    }
+
     res.json({
       success: true,
-      intent: 'GENERAL',
-      response: 'Hello! I am your Axiom Cognitive Companion. You can ask me about your medications, today\'s routine, recommended brain games, or appointments.',
-      actionType: 'speak',
+      intent,
+      response: reply,
+      actionType,
+      actionTarget,
+      gameMapping,
+      medicine,
     });
   } catch (err: any) {
     res.json({
       success: false,
       response: 'I am here with you. Please ask me about your medicine, games, or schedule.',
     });
+  }
+});
+
+/**
+ * Get Assistant chat history from Supabase.
+ */
+apiRouter.get('/assistant/history/:patientId', optionalAuth, async (req: Request, res: Response) => {
+  try {
+    const { patientId } = req.params;
+    const resolvedPatientId = req.user?.userId || patientId;
+    const messages = await dbService.getAssistantMessages(resolvedPatientId);
+    res.json({ success: true, messages });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * Memories CRUD endpoints
+ */
+apiRouter.get('/memories/:patientId', optionalAuth, async (req: Request, res: Response) => {
+  try {
+    const { patientId } = req.params;
+    const resolvedPatientId = req.user?.userId || patientId;
+    const memories = await dbService.getMemories(resolvedPatientId);
+    res.json({ success: true, memories });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+apiRouter.post('/memories/:patientId', optionalAuth, async (req: Request, res: Response) => {
+  try {
+    const { patientId } = req.params;
+    const { memories } = req.body;
+    const resolvedPatientId = req.user?.userId || patientId;
+    await dbService.upsertMemories(resolvedPatientId, memories);
+    res.json({ success: true, message: 'Memories updated in Supabase.' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

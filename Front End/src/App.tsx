@@ -1,8 +1,7 @@
 import React from 'react';
 import { useApp } from './context/AppContext';
 import { useAuth } from './context/AuthContext';
-import { DemoToolbar } from './components/layout/DemoToolbar';
-import { GuidedDemoController } from './components/demo/GuidedDemoController';
+import { LandingPage } from './pages/landing/LandingPage';
 import { WelcomePage } from './pages/onboarding/WelcomePage';
 import { AuthPage } from './pages/auth/AuthPage';
 import { ResetPasswordPage } from './pages/auth/ResetPasswordPage';
@@ -42,6 +41,9 @@ export const App: React.FC = () => {
     const routeBase = currentRoute.split('?')[0];
     switch (routeBase) {
       // Public / Auth Routes
+      case '/':
+      case '/landing':
+        return <LandingPage />;
       case '/welcome':
         return <WelcomePage />;
       case '/login':
@@ -128,20 +130,14 @@ export const App: React.FC = () => {
         return <CaregiverSettingsPage />;
 
       default:
-        return <WelcomePage />;
+        return <LandingPage />;
     }
   };
 
   return (
     <div className="min-h-screen flex flex-col bg-[#F8FAFC]">
-      {/* Top Demo Toolbar for SIH Judges */}
-      <DemoToolbar />
-
       {/* Active Route Content */}
       <div className="flex-1">{renderRoute()}</div>
-
-      {/* SIH Presentation Guide Controller */}
-      <GuidedDemoController />
 
       {/* Global Toast Notification */}
       {toastMessage && (

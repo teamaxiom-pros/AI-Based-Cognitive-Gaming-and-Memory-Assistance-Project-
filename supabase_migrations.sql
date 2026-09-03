@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS public.patient_profiles (
     focus_domain TEXT DEFAULT 'memory',
     interests TEXT[] DEFAULT '{}',
     invite_code TEXT UNIQUE,
+    has_completed_assessment BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -205,6 +206,27 @@ CREATE TABLE IF NOT EXISTS public.memories (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 14. Assistant Conversations Table
+CREATE TABLE IF NOT EXISTS public.assistant_conversations (
+    id TEXT PRIMARY KEY,
+    patient_id TEXT NOT NULL,
+    title TEXT DEFAULT 'Axiom Assistant Chat',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 15. Assistant Messages Table (Persistent Chat History)
+CREATE TABLE IF NOT EXISTS public.assistant_messages (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL,
+    patient_id TEXT NOT NULL,
+    sender TEXT NOT NULL CHECK (sender IN ('user', 'assistant')),
+    content TEXT NOT NULL,
+    intent TEXT,
+    action_target TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ==============================================================================
 -- INDEXES for High-Performance Queries
 -- ==============================================================================
@@ -223,6 +245,8 @@ CREATE INDEX IF NOT EXISTS idx_medicines_patient_id ON public.medicines(patient_
 CREATE INDEX IF NOT EXISTS idx_appointments_patient_id ON public.appointments(patient_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_patient_id ON public.notifications(patient_id);
 CREATE INDEX IF NOT EXISTS idx_memories_patient_id ON public.memories(patient_id);
+CREATE INDEX IF NOT EXISTS idx_assistant_conversations_patient_id ON public.assistant_conversations(patient_id);
+CREATE INDEX IF NOT EXISTS idx_assistant_messages_conversation_id ON public.assistant_messages(conversation_id);
 
 -- ==============================================================================
 -- ROW LEVEL SECURITY (RLS) POLICIES
@@ -240,8 +264,10 @@ ALTER TABLE public.medicines ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.appointments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.memories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.assistant_conversations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.assistant_messages ENABLE ROW LEVEL SECURITY;
 
--- Allow anon and authenticated access for demo & hackathon web portal
+-- Allow authenticated and service access
 DO $$
 BEGIN
     DROP POLICY IF EXISTS "Allow all for profiles" ON public.profiles;
@@ -282,4 +308,10 @@ BEGIN
 
     DROP POLICY IF EXISTS "Allow all for memories" ON public.memories;
     CREATE POLICY "Allow all for memories" ON public.memories FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+    DROP POLICY IF EXISTS "Allow all for assistant_conversations" ON public.assistant_conversations;
+    CREATE POLICY "Allow all for assistant_conversations" ON public.assistant_conversations FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+    DROP POLICY IF EXISTS "Allow all for assistant_messages" ON public.assistant_messages;
+    CREATE POLICY "Allow all for assistant_messages" ON public.assistant_messages FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 END $$;

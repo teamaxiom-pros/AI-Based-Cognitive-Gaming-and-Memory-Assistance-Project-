@@ -212,6 +212,25 @@ class ApiService {
   }
 
   /**
+   * Retrieves persistent Assistant chat history from Supabase.
+   */
+  async getAssistantHistory(patientId: string = 'P001') {
+    try {
+      const headers = await this.getAuthHeaders();
+      const res = await fetch(`${BACKEND_BASE_URL}/assistant/history/${patientId}`, {
+        method: 'GET',
+        headers,
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      return { success: false, messages: [] };
+    } catch {
+      return { success: false, messages: [] };
+    }
+  }
+
+  /**
    * Links a patient to caregiver via secure invite code.
    */
   async linkCaregiverPatient(inviteCode: string, relationship?: string) {

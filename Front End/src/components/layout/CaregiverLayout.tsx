@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
 import {
   LayoutDashboard,
   Brain,
@@ -12,11 +13,11 @@ import {
   Settings,
   Phone,
   MessageSquare,
-  ChevronRight,
   Menu,
   X,
+  LogOut,
   User,
-  ShieldAlert,
+  HeartHandshake,
 } from 'lucide-react';
 import { OfflineBanner } from '../common/OfflineBanner';
 
@@ -29,8 +30,10 @@ export const CaregiverLayout: React.FC<CaregiverLayoutProps> = ({
   children,
   activeTab,
 }) => {
-  const { currentRoute, navigate, patient, alerts, medicines, routineItems, t, showToast } = useApp();
+  const { currentRoute, navigate, patient, alerts, medicines, routineItems, showToast, setUserMode } = useApp();
+  const { signOut } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
 
   const menuItems = [
     { id: 'dashboard', label: 'Overview', route: '/caregiver/dashboard', icon: LayoutDashboard },
@@ -50,12 +53,16 @@ export const CaregiverLayout: React.FC<CaregiverLayoutProps> = ({
     { id: 'settings', label: 'Care Settings', route: '/caregiver/settings', icon: Settings },
   ];
 
-  const unackAlerts = alerts.filter(a => !a.isAcknowledged).length;
   const takenMedsCount = medicines.filter(m => m.isTakenToday).length;
   const completedRoutineCount = routineItems.filter(r => r.isCompleted).length;
 
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/');
+  };
+
   return (
-    <div className="min-h-screen bg-[#F1F5F9] flex flex-col font-sans">
+    <div className="min-h-screen bg-[#F1F5F9] flex flex-col font-sans text-slate-800">
       <OfflineBanner />
 
       <div className="flex-1 flex flex-col md:flex-row">
@@ -86,7 +93,7 @@ export const CaregiverLayout: React.FC<CaregiverLayoutProps> = ({
           {/* Logo & Portal Info */}
           <div className="p-6 border-b border-slate-800 flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-black text-xl shadow-md">
-              A
+              <Brain size={22} />
             </div>
             <div>
               <div className="font-extrabold text-white text-base tracking-tight">AXIOM CLINICAL</div>
@@ -142,26 +149,41 @@ export const CaregiverLayout: React.FC<CaregiverLayoutProps> = ({
             })}
           </nav>
 
-          {/* Sidebar Footer Quick Action */}
+          {/* Sidebar Footer Actions */}
           <div className="p-4 border-t border-slate-800 space-y-2">
             <button
               onClick={() => {
                 showToast(`Calling ${patient.name}...`);
               }}
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+              className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
             >
-              <Phone size={14} /> Call Asha (+91 98765 43210)
+              <Phone size={13} /> Call {patient.name.split(' ')[0]}
+            </button>
+            <button
+              onClick={() => {
+                setUserMode('patient');
+                navigate('/home');
+              }}
+              className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+            >
+              <User size={13} /> Switch to Patient View
+            </button>
+            <button
+              onClick={handleSignOut}
+              className="w-full flex items-center justify-center gap-2 py-2 px-3 text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+            >
+              <LogOut size={13} /> Sign Out
             </button>
           </div>
         </aside>
 
         {/* Main Caregiver Content Area */}
         <main className="flex-1 flex flex-col overflow-y-auto">
-          {/* Top Quick Stats Bar for Asha */}
-          <div className="bg-white border-b border-slate-200 px-6 py-3.5 hidden md:flex items-center justify-between gap-4">
+          {/* Top Quick Stats Bar */}
+          <div className="bg-white border-b border-slate-200 px-6 py-3.5 hidden md:flex items-center justify-between gap-4 sticky top-0 z-30 shadow-2xs">
             <div className="flex items-center gap-6 text-sm">
               <div>
-                <span className="text-slate-500 font-medium">Patient:</span>{' '}
+                <span className="text-slate-500 font-medium">Active Patient:</span>{' '}
                 <span className="font-bold text-slate-900">{patient.name} ({patient.age})</span>
               </div>
               <div className="h-4 w-px bg-slate-300" />
@@ -184,10 +206,10 @@ export const CaregiverLayout: React.FC<CaregiverLayoutProps> = ({
                 <FileText size={14} /> Export Report
               </button>
               <button
-                onClick={() => showToast('Care team notification sent via SMS.')}
-                className="px-3.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 border border-indigo-200"
+                onClick={handleSignOut}
+                className="px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 border border-rose-200"
               >
-                <MessageSquare size={14} /> Message Team
+                <LogOut size={13} /> Sign Out
               </button>
             </div>
           </div>

@@ -125,7 +125,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Navigation
   const [userMode, setUserModeState] = useState<UserMode>(role || 'patient');
-  const [currentRoute, setCurrentRoute] = useState<string>('/welcome');
+  const [currentRoute, setCurrentRoute] = useState<string>(() => {
+    if (typeof window !== 'undefined' && window.location.pathname && window.location.pathname !== '/') {
+      return window.location.pathname;
+    }
+    return '/';
+  });
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setCurrentRoute(window.location.pathname || '/');
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // i18n
   const [language, setLanguageState] = useState<Language>('en');
@@ -292,15 +305,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const navigate = (route: string) => {
     speechService.stop();
     setCurrentRoute(route);
+    if (typeof window !== 'undefined' && window.location.pathname !== route) {
+      window.history.pushState({}, '', route);
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const setUserMode = (mode: UserMode) => {
     setUserModeState(mode);
     if (mode === 'caregiver') {
-      setCurrentRoute('/caregiver/dashboard');
+      navigate('/caregiver/dashboard');
     } else {
-      setCurrentRoute(onboardingCompleted ? '/home' : '/welcome');
+      navigate('/home');
     }
   };
 

@@ -328,6 +328,74 @@ apiRouter.post('/sessions/record', optionalAuth, async (req: Request, res: Respo
 });
 
 /**
+ * Alias for /game/record-session to support direct game clients
+ */
+apiRouter.post('/game/record-session', optionalAuth, async (req: Request, res: Response) => {
+  try {
+    const {
+      patientId,
+      gameId,
+      gameTitle,
+      domain,
+      level = 1,
+      difficultyTier = 1,
+      score = 80,
+      accuracy = 80,
+      durationSeconds = 30,
+      hintsUsed = 0,
+    } = req.body;
+
+    const resolvedPatientId = req.user?.userId || patientId || 'P001';
+
+    if (!gameId) {
+      res.status(400).json({ success: false, error: 'gameId is required' });
+      return;
+    }
+
+    const session: RecordedGameSession = {
+      sessionId: `sess-${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 4)}`,
+      patientId: resolvedPatientId,
+      gameId,
+      gameTitle: gameTitle || gameId,
+      domain: domain || 'memory',
+      level: Number(level),
+      difficultyTier: Number(difficultyTier) || 1,
+      score: Number(score),
+      accuracy: Number(accuracy),
+      durationSeconds: Number(durationSeconds),
+      hintsUsed: Number(hintsUsed),
+      completedAt: new Date().toISOString(),
+    };
+
+    await recordCompletedGameSession(session);
+
+    let nextRecommendation: any = null;
+    try {
+      const rec = await getAiRecommendation(resolvedPatientId);
+      const gameMapping = mapAiActivityToGame(rec.recommended_activity, rec.recommended_difficulty);
+      nextRecommendation = {
+        ...rec,
+        gameMapping,
+      };
+    } catch {
+      nextRecommendation = null;
+    }
+
+    res.json({
+      success: true,
+      message: 'Session recorded successfully in Supabase.',
+      session,
+      nextRecommendation,
+    });
+  } catch (err: any) {
+    res.status(500).json({
+      success: false,
+      error: err.message || 'Internal server error recording session.',
+    });
+  }
+});
+
+/**
  * Retrieve patient sessions history from Supabase.
  */
 apiRouter.get('/sessions/:patientId', optionalAuth, async (req: Request, res: Response) => {
@@ -389,9 +457,10 @@ apiRouter.get('/caregiver/patients', optionalAuth, async (req: Request, res: Res
  */
 apiRouter.post('/assistant/query', optionalAuth, async (req: Request, res: Response) => {
   try {
-    const { query = '', patientId } = req.body;
+    const { query = '', message = '', patientId } = req.body;
+    const rawText = (query || message || '').toString();
     const resolvedPatientId = req.user?.userId || patientId || 'P001';
-    const q = query.toLowerCase().trim();
+    const q = rawText.toLowerCase().trim();
 
     let reply = 'Hello! I am your Axiom Cognitive Companion. You can ask me about your medications, today\'s routine, recommended brain games, or appointments.';
     let intent = 'GENERAL';
@@ -463,7 +532,7 @@ apiRouter.post('/assistant/query', optionalAuth, async (req: Request, res: Respo
         conversationId,
         patientId: resolvedPatientId,
         sender: 'user',
-        content: query,
+        content: rawText,
         intent,
       });
       await dbService.saveAssistantMessage({
@@ -481,6 +550,7 @@ apiRouter.post('/assistant/query', optionalAuth, async (req: Request, res: Respo
     res.json({
       success: true,
       intent,
+      reply,
       response: reply,
       actionType,
       actionTarget,
@@ -490,6 +560,117 @@ apiRouter.post('/assistant/query', optionalAuth, async (req: Request, res: Respo
   } catch (err: any) {
     res.json({
       success: false,
+      reply: 'I am here with you. Please ask me about your medicine, games, or schedule.',
+      response: 'I am here with you. Please ask me about your medicine, games, or schedule.',
+    });
+  }
+});
+
+/**
+ * Alias for /assistant/chat
+ */
+apiRouter.post('/assistant/chat', optionalAuth, async (req: Request, res: Response) => {
+  // Delegate directly to assistant query logic
+  try {
+    const { query = '', message = '', patientId } = req.body;
+    const rawText = (query || message || '').toString();
+    const resolvedPatientId = req.user?.userId || patientId || 'P001';
+    const q = rawText.toLowerCase().trim();
+
+    let reply = 'Hello! I am your Axiom Cognitive Companion. You can ask me about your medications, today\'s routine, recommended brain games, or appointments.';
+    let intent = 'GENERAL';
+    let actionType: string | undefined = 'speak';
+    let actionTarget: string | undefined = undefined;
+    let gameMapping: any = undefined;
+    let medicine: any = undefined;
+
+    if (q.includes('medicine') || q.includes('pill') || q.includes('দৱা') || q.includes('ঔষধ') || q.includes('दवा')) {
+      const medicines = await dbService.getMedicines(resolvedPatientId);
+      const untaken = medicines.filter(m => !m.is_taken_today);
+      const nextMed = untaken[0] || medicines[0];
+      intent = 'MEDICINE_QUERY';
+      actionType = 'navigate';
+      actionTarget = '/medicines';
+
+      if (nextMed) {
+        reply = `Your next scheduled medicine is ${nextMed.name} (${nextMed.dosage}) at ${nextMed.time} (${nextMed.schedule}).`;
+        medicine = nextMed;
+      } else {
+        reply = 'All your medications for today are completed! Keep up the good routine.';
+      }
+    } else if (q.includes('recommend') || q.includes('play') || q.includes('game') || q.includes('activity') || q.includes('খেল') || q.includes('खेल')) {
+      intent = 'START_ACTIVITY';
+      actionType = 'navigate';
+      try {
+        const rec = await getAiRecommendation(resolvedPatientId);
+        const game = mapAiActivityToGame(rec.recommended_activity, rec.recommended_difficulty);
+        reply = `Axiom AI recommends "${game.gameTitle}" focused on ${rec.focus_domain} at Difficulty ${rec.recommended_difficulty}.`;
+        actionTarget = game.route;
+        gameMapping = game;
+      } catch (err: any) {
+        reply = `I recommend trying "Assam Heritage Memory Match" to exercise visual recall.`;
+        actionTarget = '/activities/memory-match';
+      }
+    } else if (q.includes('schedule') || q.includes('today') || q.includes('routine') || q.includes('ৰুটিন') || q.includes('दिनचर्या')) {
+      intent = 'TODAY_SCHEDULE';
+      actionType = 'navigate';
+      actionTarget = '/routine';
+      const routines = await dbService.getRoutines(resolvedPatientId);
+      const appointments = await dbService.getAppointments(resolvedPatientId);
+      const pendingRoutines = routines.filter(r => !r.completed);
+      let msg = `You have ${routines.length} routine items today (${pendingRoutines.length} remaining).`;
+      if (appointments.length > 0) {
+        msg += ` You also have an appointment with ${appointments[0].doctor_name} at ${appointments[0].time}.`;
+      }
+      reply = msg;
+    } else if (q.includes('appointment') || q.includes('doctor') || q.includes('ডাক্তাৰ') || q.includes('डॉक्टर')) {
+      intent = 'APPOINTMENT_QUERY';
+      actionType = 'navigate';
+      actionTarget = '/routine';
+      const appointments = await dbService.getAppointments(resolvedPatientId);
+      if (appointments.length > 0) {
+        const apt = appointments[0];
+        reply = `Your upcoming appointment is with ${apt.doctor_name} (${apt.specialty}) on ${apt.date} at ${apt.time} (${apt.location}).`;
+      } else {
+        reply = 'You have no clinical appointments scheduled for this week.';
+      }
+    }
+
+    try {
+      const conversationId = await dbService.getOrCreateConversation(resolvedPatientId);
+      await dbService.saveAssistantMessage({
+        conversationId,
+        patientId: resolvedPatientId,
+        sender: 'user',
+        content: rawText,
+        intent,
+      });
+      await dbService.saveAssistantMessage({
+        conversationId,
+        patientId: resolvedPatientId,
+        sender: 'assistant',
+        content: reply,
+        intent,
+        actionTarget,
+      });
+    } catch (saveErr) {
+      console.warn('[ApiRouter] Could not persist chat message to DB:', saveErr);
+    }
+
+    res.json({
+      success: true,
+      intent,
+      reply,
+      response: reply,
+      actionType,
+      actionTarget,
+      gameMapping,
+      medicine,
+    });
+  } catch (err: any) {
+    res.json({
+      success: false,
+      reply: 'I am here with you. Please ask me about your medicine, games, or schedule.',
       response: 'I am here with you. Please ask me about your medicine, games, or schedule.',
     });
   }

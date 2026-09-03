@@ -29,16 +29,19 @@ export const UniversalGamePlayer: React.FC<UniversalGamePlayerProps> = ({
   const queryParams = new URLSearchParams(
     currentRoute.includes('?') ? currentRoute.split('?')[1] : typeof window !== 'undefined' ? window.location.search : ''
   );
-  const parsedLevel = queryParams.get('level') ? parseInt(queryParams.get('level')!, 10) : undefined;
+  const rawQueryLevel = queryParams.get('level');
+  const parsedLevel = rawQueryLevel ? parseInt(rawQueryLevel, 10) : undefined;
 
   const [currentLevel, setCurrentLevel] = useState(
     effectiveInitialLevel(initialLevel, parsedLevel, gameProgress.currentLevel)
   );
 
   function effectiveInitialLevel(propLvl?: number, queryLvl?: number, progressLvl?: number): number {
-    if (propLvl && propLvl >= 1) return propLvl;
-    if (queryLvl && queryLvl >= 1) return queryLvl;
-    return progressLvl || 1;
+    let lvl = 1;
+    if (typeof propLvl === 'number' && !isNaN(propLvl) && propLvl >= 1) lvl = propLvl;
+    else if (typeof queryLvl === 'number' && !isNaN(queryLvl) && queryLvl >= 1) lvl = queryLvl;
+    else if (typeof progressLvl === 'number' && !isNaN(progressLvl) && progressLvl >= 1) lvl = progressLvl;
+    return Math.max(1, Math.min(100, Math.floor(lvl)));
   }
 
   const gameDef = gamesLibrary.find(g => g.id === activeGameId) || gamesLibrary[0];
@@ -48,6 +51,7 @@ export const UniversalGamePlayer: React.FC<UniversalGamePlayerProps> = ({
   const [showLevelSelector, setShowLevelSelector] = useState(false);
   const [showResultModal, setShowResultModal] = useState(false);
   const [lastResult, setLastResult] = useState<GameResultRecord | null>(null);
+  const isFinishingRef = React.useRef<boolean>(false);
 
   // Game session states
   const [timerSeconds, setTimerSeconds] = useState(0);
@@ -160,6 +164,7 @@ export const UniversalGamePlayer: React.FC<UniversalGamePlayerProps> = ({
   }, [showResultModal, activeGameId, currentLevel]);
 
   const setupLevel = () => {
+    isFinishingRef.current = false;
     setTimerSeconds(0);
     setMovesCount(0);
     setHintsRemaining(levelConfig.hintsAllowed);
@@ -480,6 +485,8 @@ export const UniversalGamePlayer: React.FC<UniversalGamePlayerProps> = ({
   };
 
   const completeLevel = (accuracy: number) => {
+    if (isFinishingRef.current) return;
+    isFinishingRef.current = true;
     const result = recordLevelCompletion(
       patient.id,
       activeGameId,

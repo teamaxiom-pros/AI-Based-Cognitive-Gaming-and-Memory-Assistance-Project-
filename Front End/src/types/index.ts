@@ -54,7 +54,7 @@ export interface AssessmentQuestion {
   instruction: string;
   audioPromptText: string;
   difficultyWeight: number; // 1 = Easy, 2 = Medium, 3 = Hard
-  type: 'multiple-choice' | 'memorize' | 'find-object' | 'sequence-choice' | 'multi-select';
+  type: 'multiple-choice' | 'memorize' | 'find-object' | 'sequence-choice' | 'multi-select' | 'step-order' | 'timed-match';
   options?: { id: string; label: string; icon?: string; image?: string; isCorrect?: boolean }[];
   correctAnswers?: string[];
   expectedOptionId?: string;
@@ -90,6 +90,7 @@ export interface AssessmentTaskResponse {
   responseTimeMs?: number;
   hintsUsed?: number;
   skipped?: boolean;
+  metadata?: Record<string, any>;
   timestamp?: string;
 }
 
@@ -101,6 +102,8 @@ export interface CognitiveScore {
   taskCount: number;
   correctCount: number;
   averageResponseTimeMs: number;
+  level?: string;
+  activityLevel?: number;
 }
 
 export interface AssessmentSession {
@@ -111,6 +114,7 @@ export interface AssessmentSession {
   endTime: string;
   durationSeconds: number;
   overallScore: number;
+  focusDomain?: string;
   domainScores: Record<string, CognitiveScore>;
   taskResponses: AssessmentTaskResponse[];
   aiSummary: string;
@@ -124,6 +128,8 @@ export interface AssessmentResult {
   completedAt: string;
   overallScore: number;
   focusDomain?: string;
+  recommendedActivity?: string;
+  recommendedDifficulty?: number;
   domainScores: Record<string, CognitiveScore>;
   aiSummary: string;
   recommendedActivities: string[];

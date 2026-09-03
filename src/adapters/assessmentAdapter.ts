@@ -14,6 +14,7 @@ export interface FrontendTaskResponse {
   responseTimeMs?: number;
   hintsUsed?: number;
   skipped?: boolean;
+  metadata?: Record<string, any>;
   timestamp?: string;
 }
 
@@ -35,6 +36,7 @@ export interface DomainScoreOutput {
   correctCount: number;
   averageResponseTimeMs: number;
   level: string;
+  activityLevel: number; // 1 to 5
 }
 
 export interface AssessmentResultOutput {
@@ -43,6 +45,8 @@ export interface AssessmentResultOutput {
   completedAt: string;
   overallScore: number;
   focusDomain: string;
+  recommendedActivity: string;
+  recommendedDifficulty: number;
   domainScores: Record<string, DomainScoreOutput>;
   aiSummary: string;
   recommendedActivities: string[];
@@ -59,10 +63,10 @@ export function mapFrontendResponsesToAi(
   responses: FrontendTaskResponse[]
 ): {
   aiInputs: AdaptedAiTaskInput[];
-  orientationContext: { timeAndDay?: any; region?: any };
+  orientationContext: { timeAndDay?: any; comfort?: any };
 } {
   const aiInputs: AdaptedAiTaskInput[] = [];
-  const orientationContext: { timeAndDay?: any; region?: any } = {};
+  const orientationContext: { timeAndDay?: any; comfort?: any } = {};
 
   for (const resp of responses) {
     const responseTimeSec = Math.max(
@@ -72,99 +76,41 @@ export function mapFrontendResponsesToAi(
     const hintsUsed = Math.max(0, resp.hintsUsed || 0);
     const attempts = 1;
 
-    switch (resp.taskId) {
-      case 'task-orientation-1':
+    let mappedDomain = resp.domain;
+    if (mappedDomain === 'sequencing') mappedDomain = 'executive_function';
+    if (mappedDomain === 'recall') mappedDomain = 'memory';
+
+    if (mappedDomain === 'orientation') {
+      if (resp.taskId.includes('1') || resp.taskId.includes('day')) {
         orientationContext.timeAndDay = {
           answer: resp.patientAnswer,
           isCorrect: resp.isCorrect,
           responseTimeSec,
         };
-        break;
-
-      case 'task-orientation-2':
-        orientationContext.region = {
+      } else {
+        orientationContext.comfort = {
           answer: resp.patientAnswer,
-          isCorrect: resp.isCorrect,
           responseTimeSec,
         };
-        break;
-
-      case 'task-memory-encoding-3':
-        aiInputs.push({
-          task_id: 'MEM_01',
-          domain: 'memory',
-          accuracy: resp.isCorrect ? 1.0 : Math.max(0, Math.min(1.0, (resp.score || 0) / 100)),
-          response_time: responseTimeSec,
-          attempts,
-          hints_used: hintsUsed,
-        });
-        break;
-
-      case 'task-recall-7':
-        aiInputs.push({
-          task_id: 'MEM_02',
-          domain: 'memory',
-          accuracy: Math.max(0, Math.min(1.0, (resp.score || 0) / 100)),
-          response_time: responseTimeSec,
-          attempts,
-          hints_used: hintsUsed,
-        });
-        break;
-
-      case 'task-attention-4':
-        aiInputs.push({
-          task_id: 'ATT_01',
-          domain: 'attention',
-          accuracy: resp.isCorrect ? 1.0 : 0.0,
-          response_time: responseTimeSec,
-          attempts,
-          hints_used: hintsUsed,
-        });
-        break;
-
-      case 'task-sequencing-5':
-        aiInputs.push({
-          task_id: 'EXE_01',
-          domain: 'executive_function',
-          accuracy: resp.isCorrect ? 1.0 : 0.0,
-          response_time: responseTimeSec,
-          attempts,
-          hints_used: hintsUsed,
-        });
-        break;
-
-      case 'task-recognition-6':
-        aiInputs.push({
-          task_id: 'REC_01',
-          domain: 'recognition',
-          accuracy: resp.isCorrect ? 1.0 : 0.0,
-          response_time: responseTimeSec,
-          attempts,
-          hints_used: hintsUsed,
-        });
-        break;
-
-      default:
-        // Handle generic or dynamic tasks cleanly
-        if (resp.domain && resp.domain !== 'orientation') {
-          const mappedDomain =
-            resp.domain === 'sequencing'
-              ? 'executive_function'
-              : resp.domain === 'recall'
-              ? 'memory'
-              : resp.domain;
-
-          aiInputs.push({
-            task_id: resp.taskId || `TASK_${aiInputs.length + 1}`,
-            domain: mappedDomain,
-            accuracy: resp.isCorrect ? 1.0 : Math.max(0, Math.min(1.0, (resp.score || 0) / 100)),
-            response_time: responseTimeSec,
-            attempts,
-            hints_used: hintsUsed,
-          });
-        }
-        break;
+      }
+      continue;
     }
+
+    let accuracy = 0;
+    if (typeof resp.score === 'number') {
+      accuracy = Math.max(0, Math.min(1.0, resp.score / 100));
+    } else {
+      accuracy = resp.isCorrect ? 1.0 : 0.0;
+    }
+
+    aiInputs.push({
+      task_id: resp.taskId || `TASK_${aiInputs.length + 1}`,
+      domain: mappedDomain,
+      accuracy,
+      response_time: responseTimeSec,
+      attempts,
+      hints_used: hintsUsed,
+    });
   }
 
   return { aiInputs, orientationContext };
@@ -201,35 +147,51 @@ export function formatAiBaselineToAssessmentResult(
             rawDomainTasks.reduce((s, t) => s + (t.responseTimeMs || 0), 0) /
               rawDomainTasks.length
           )
-        : 4000;
+        : 3500;
 
     let status: DomainScoreOutput['status'] = 'Good';
-    if (data.score >= 80) status = 'Strong';
-    else if (data.score >= 60) status = 'Good';
-    else if (data.score >= 40) status = 'Needs Practice';
-    else status = 'Developing';
+    let activityLevel = 2;
 
-    let recommendation = `Recommended daily exercises in ${domain} to maintain cognitive health.`;
+    if (data.score >= 80) {
+      status = 'Strong';
+      activityLevel = 3;
+    } else if (data.score >= 60) {
+      status = 'Good';
+      activityLevel = 2;
+    } else if (data.score >= 40) {
+      status = 'Needs Practice';
+      activityLevel = 1;
+    } else {
+      status = 'Developing';
+      activityLevel = 1;
+    }
+
+    let recommendation = `Recommended daily exercises in ${domain} to maintain cognitive vitality.`;
     if (domain === 'memory') {
       recommendation =
         data.score >= 80
-          ? 'Strong memory recall. Continue visual heritage pairing games.'
-          : 'Gentle cultural item pairing and heritage memory matching recommended.';
+          ? 'Memory recall and visual retention are strong. Continue daily pairing activities.'
+          : 'Gentle familiar item matching and recall practice recommended.';
     } else if (domain === 'attention') {
       recommendation =
         data.score >= 80
-          ? 'Selective visual focus is strong. Keep discovering details in garden scenes.'
-          : 'Visual focus search in serene tea garden scenes to reinforce attention.';
+          ? 'Selective visual focus is sharp and distinct.'
+          : 'Visual target search in calm garden scenes to reinforce attention.';
+    } else if (domain === 'processing_speed') {
+      recommendation =
+        data.score >= 80
+          ? 'Visual comparison and symbol response speeds are comfortable.'
+          : 'Gentle timed shape matching to practice processing speed.';
     } else if (domain === 'executive_function') {
       recommendation =
         data.score >= 80
-          ? 'Pattern recognition and sequence flow are active and accurate.'
-          : 'Daily rhythm sequence building and category ordering exercises recommended.';
+          ? 'Step planning and sequence logic are orderly and accurate.'
+          : 'Daily step sequencing and category grouping exercises recommended.';
     } else if (domain === 'recognition') {
       recommendation =
         data.score >= 80
-          ? 'Traditional motif and shape discrimination are clear and distinct.'
-          : 'Familiar cultural silhouettes and handicraft recognition exercises.';
+          ? 'Item discrimination and visual recognition are confident.'
+          : 'Familiar object and silhouette recognition exercises.';
     }
 
     domainScores[domain] = {
@@ -237,6 +199,7 @@ export function formatAiBaselineToAssessmentResult(
       score: Math.round(data.score),
       status,
       level: data.level,
+      activityLevel,
       recommendation,
       taskCount: rawDomainTasks.length || data.tasks_completed,
       correctCount,
@@ -247,7 +210,7 @@ export function formatAiBaselineToAssessmentResult(
     domainCount++;
   }
 
-  // Include orientation domain for full frontend rendering
+  // Include orientation domain context for full frontend rendering
   const orientationTasks = rawResponses.filter(r => r.domain === 'orientation');
   if (orientationTasks.length > 0) {
     const correctCount = orientationTasks.filter(t => t.isCorrect).length;
@@ -257,35 +220,43 @@ export function formatAiBaselineToAssessmentResult(
       score: orientationScore,
       status: orientationScore >= 80 ? 'Strong' : 'Needs Practice',
       level: orientationScore >= 80 ? 'Strong' : 'Needs Support',
+      activityLevel: orientationScore >= 80 ? 3 : 1,
       recommendation:
         orientationScore >= 80
-          ? 'Orientation is sharp. Continue daily morning calendar & weather check-ins.'
-          : 'Practice daily time and place orientation cues with morning tea reminders.',
+          ? 'Orientation is comfortable. Continue regular daily check-ins.'
+          : 'Daily morning calendar and time check-ins recommended.',
       taskCount: orientationTasks.length,
       correctCount,
-      averageResponseTimeMs: 3000,
+      averageResponseTimeMs: 2500,
     };
   }
 
   const overallScore =
     domainCount > 0 ? Math.round(totalScoreSum / domainCount) : 75;
 
-  // Build authoritative AI recommendations based on focus_domain
-  const recommendedActivities: string[] = [];
+  // Calibrate primary recommended activity and difficulty level from focus domain
+  let recommendedActivity = 'memory-match';
+  let recommendedDifficulty = 1;
+
   if (focusDomain === 'memory') {
-    recommendedActivities.push('memory-match', 'picture-recall', 'symbol-matching');
+    recommendedActivity = 'memory-match';
+    recommendedDifficulty = domainScores['memory']?.activityLevel || 1;
   } else if (focusDomain === 'attention') {
-    recommendedActivities.push('attention-finder', 'odd-one-out');
+    recommendedActivity = 'attention-search';
+    recommendedDifficulty = domainScores['attention']?.activityLevel || 1;
+  } else if (focusDomain === 'processing_speed') {
+    recommendedActivity = 'category-sorting';
+    recommendedDifficulty = domainScores['processing_speed']?.activityLevel || 1;
   } else if (focusDomain === 'executive_function') {
-    recommendedActivities.push('sequence-builder', 'category-sorting');
+    recommendedActivity = 'pattern-sequence';
+    recommendedDifficulty = domainScores['executive_function']?.activityLevel || 1;
   } else if (focusDomain === 'recognition') {
-    recommendedActivities.push('object-recognition', 'spatial-memory');
-  } else {
-    recommendedActivities.push('memory-match', 'attention-finder');
+    recommendedActivity = 'object-recognition';
+    recommendedDifficulty = domainScores['recognition']?.activityLevel || 1;
   }
 
-  // Ensure 3-4 distinct activity cards for the UI carousel
-  const secondaryActivities = ['memory-match', 'attention-finder', 'sequence-builder', 'object-recognition'];
+  const recommendedActivities: string[] = [recommendedActivity];
+  const secondaryActivities = ['memory-match', 'attention-search', 'pattern-sequence', 'category-sorting', 'object-recognition'];
   for (const act of secondaryActivities) {
     if (!recommendedActivities.includes(act)) {
       recommendedActivities.push(act);
@@ -293,9 +264,10 @@ export function formatAiBaselineToAssessmentResult(
     if (recommendedActivities.length >= 4) break;
   }
 
-  const aiSummary = `Axiom AI Cognitive Baseline: Overall score ${overallScore}%. Priority focus domain identified as ${focusDomain.replace('_', ' ').toUpperCase()} (${domainScores[focusDomain]?.level || 'Needs Support'}). Daily tailored activity plan generated.`;
+  const focusDomainName = focusDomain.replace('_', ' ').toUpperCase();
+  const aiSummary = `Axiom AI Baseline established: Overall score ${overallScore}%. Current activity focus: ${focusDomainName} (Level ${recommendedDifficulty}). Tailored daily exercises selected.`;
 
-  const clinicalNotes = `Patient baseline evaluated by Axiom AI engine. Focus domain: ${focusDomain}. Safe starting difficulty: ${overallScore >= 80 ? 3 : overallScore >= 60 ? 2 : 1}. Orientation: ${orientationContext?.timeAndDay?.isCorrect ? 'Intact' : 'Supported'}.`;
+  const clinicalNotes = `Axiom AI Cognitive Assessment completed. Overall baseline: ${overallScore}%. Priority focus: ${focusDomain}. Calibrated activity difficulty: Level ${recommendedDifficulty}. Non-diagnostic cognitive performance calibration.`;
 
   return {
     sessionId: `asmt-${Date.now().toString(36)}`,
@@ -303,6 +275,8 @@ export function formatAiBaselineToAssessmentResult(
     completedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     overallScore,
     focusDomain,
+    recommendedActivity,
+    recommendedDifficulty,
     domainScores,
     aiSummary,
     recommendedActivities,

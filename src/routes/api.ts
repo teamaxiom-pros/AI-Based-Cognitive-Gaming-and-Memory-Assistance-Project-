@@ -237,17 +237,18 @@ apiRouter.get('/recommendation/:patientId', optionalAuth, async (req: Request, r
       }
     }
 
-    const gameMapping = mapAiActivityToGame(
-      aiRecommendation.recommended_activity,
-      aiRecommendation.recommended_difficulty
-    );
+    const focusDomain = aiRecommendation.focus_domain || (aiRecommendation as any).domain || 'memory';
+    const activity = aiRecommendation.recommended_activity || (aiRecommendation as any).activity || 'card_match';
+    const difficulty = aiRecommendation.recommended_difficulty ?? (aiRecommendation as any).final_difficulty ?? 1;
+
+    const gameMapping = mapAiActivityToGame(activity, difficulty);
 
     // Persist recommendation in Supabase
     await dbService.saveAiRecommendation({
       patientId: resolvedPatientId,
-      focusDomain: aiRecommendation.focus_domain,
-      activity: aiRecommendation.recommended_activity,
-      difficulty: aiRecommendation.recommended_difficulty,
+      focusDomain,
+      activity,
+      difficulty,
       performanceSnapshot: aiRecommendation.performance,
       reason: aiRecommendation.performance?.message,
     });
@@ -255,9 +256,9 @@ apiRouter.get('/recommendation/:patientId', optionalAuth, async (req: Request, r
     res.json({
       success: true,
       patientId: resolvedPatientId,
-      focusDomain: aiRecommendation.focus_domain,
-      recommendedActivity: aiRecommendation.recommended_activity,
-      recommendedDifficulty: aiRecommendation.recommended_difficulty,
+      focusDomain,
+      recommendedActivity: activity,
+      recommendedDifficulty: difficulty,
       performance: aiRecommendation.performance,
       gameMapping,
     });

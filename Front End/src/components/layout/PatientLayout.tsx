@@ -247,8 +247,8 @@ export const PatientLayout: React.FC<PatientLayoutProps> = ({
       </main>
 
       {/* Large Bottom Navigation for Mobile & Tablet */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-xl py-2 px-3">
-        <div className="max-w-md mx-auto flex items-center justify-around gap-1">
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-xl py-1 px-2 pb-safe">
+        <div className="max-w-md mx-auto flex items-center justify-around gap-0.5 sm:gap-1">
           {navItems.map(item => {
             const isActive = currentRoute === item.route || currentRoute.startsWith(`${item.route}/`);
             const Icon = item.icon;
@@ -258,19 +258,19 @@ export const PatientLayout: React.FC<PatientLayoutProps> = ({
                 <button
                   key={item.id}
                   onClick={() => navigate(item.route)}
-                  className="flex flex-col items-center justify-center -mt-5 group cursor-pointer focus:outline-none"
+                  className="flex flex-col items-center justify-center -mt-4 group cursor-pointer focus:outline-none flex-1 max-w-[72px]"
                 >
                   <div
-                    className={`w-13 h-13 rounded-full flex items-center justify-center shadow-lg transition-transform group-hover:scale-105 ${
+                    className={`w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition-transform group-hover:scale-105 ${
                       isActive
                         ? 'bg-teal-600 text-white ring-4 ring-teal-100'
                         : 'bg-teal-700 hover:bg-teal-800 text-white shadow-teal-700/20'
                     }`}
                   >
-                    <Icon size={24} />
+                    <Icon size={22} />
                   </div>
                   <span
-                    className={`text-[10px] mt-1 font-bold ${
+                    className={`text-[9px] sm:text-[10px] mt-0.5 font-black truncate max-w-full text-center ${
                       isActive ? 'text-teal-800' : 'text-slate-600'
                     }`}
                   >
@@ -284,14 +284,14 @@ export const PatientLayout: React.FC<PatientLayoutProps> = ({
               <button
                 key={item.id}
                 onClick={() => navigate(item.route)}
-                className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all cursor-pointer min-w-[56px] ${
+                className={`flex flex-col items-center justify-center py-1 px-1 sm:px-2 rounded-xl transition-all cursor-pointer flex-1 max-w-[68px] ${
                   isActive
                     ? 'text-teal-800 font-bold bg-teal-50'
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
-                <Icon size={20} className={isActive ? 'stroke-[2.5]' : 'stroke-2'} />
-                <span className={`text-[10px] mt-0.5 ${isActive ? 'font-black' : 'font-medium'}`}>
+                <Icon size={19} className={isActive ? 'stroke-[2.5]' : 'stroke-2'} />
+                <span className={`text-[9px] sm:text-[10px] mt-0.5 text-center truncate max-w-full ${isActive ? 'font-black' : 'font-medium'}`}>
                   {item.label}
                 </span>
               </button>

@@ -84,6 +84,15 @@ export const CaregiverLayout: React.FC<CaregiverLayoutProps> = ({
           </div>
         </div>
 
+        {/* Mobile Sidebar Backdrop Overlay */}
+        {sidebarOpen && (
+          <div
+            onClick={() => setSidebarOpen(false)}
+            className="fixed inset-0 bg-slate-950/60 z-30 md:hidden backdrop-blur-xs transition-opacity duration-300"
+            aria-hidden="true"
+          />
+        )}
+
         {/* Sidebar */}
         <aside
           className={`fixed inset-y-0 left-0 z-40 w-64 bg-slate-900 text-slate-300 flex flex-col transition-transform duration-300 ease-in-out md:static md:translate-x-0 ${

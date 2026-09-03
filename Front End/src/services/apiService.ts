@@ -1,7 +1,6 @@
 import { AssessmentResult, AssessmentTaskResponse } from '../types';
 import { GameRecommendation } from '../types/gameTypes';
-import { evaluateAssessment } from './assessmentEngine';
-import { getPersonalizedRecommendations } from './gameRecommendationService';
+import { supabase } from './supabaseClient';
 
 const BACKEND_BASE_URL =
   (import.meta as any).env?.VITE_BACKEND_URL ||
@@ -15,11 +14,14 @@ export interface BackendHealthStatus {
     message: string;
     url: string;
   };
+  database?: {
+    provider: string;
+    status: string;
+  };
 }
 
 export interface BackendRecommendationResult {
   success: boolean;
-  fallbackUsed?: boolean;
   patientId: string;
   focusDomain: string;
   recommendedActivity: string;
@@ -45,10 +47,26 @@ export interface BackendRecommendationResult {
 }
 
 class ApiService {
-  private isBackendAvailable: boolean | null = null;
+  /**
+   * Helper to retrieve active Supabase JWT access token.
+   */
+  private async getAuthHeaders(): Promise<HeadersInit> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    try {
+      if (supabase) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.access_token) {
+          headers['Authorization'] = `Bearer ${session.access_token}`;
+        }
+      }
+    } catch {}
+    return headers;
+  }
 
   /**
-   * Health check to test Backend and AI connectivity.
+   * Health check to test Backend, Database, and Axiom AI connectivity.
    */
   async checkHealth(): Promise<BackendHealthStatus | null> {
     try {
@@ -57,51 +75,50 @@ class ApiService {
         headers: { 'Content-Type': 'application/json' },
       });
       if (res.ok) {
-        this.isBackendAvailable = true;
         return (await res.json()) as BackendHealthStatus;
       }
-      this.isBackendAvailable = false;
       return null;
-    } catch (err) {
-      this.isBackendAvailable = false;
+    } catch {
       return null;
     }
   }
 
   /**
    * Submits raw assessment responses to the Backend / Axiom AI baseline engine.
+   * Returns the authoritative AI baseline without silent fake fallback.
    */
   async submitInitialAssessment(
     patientId: string,
     taskResponses: AssessmentTaskResponse[]
   ): Promise<AssessmentResult> {
-    try {
-      const response = await fetch(`${BACKEND_BASE_URL}/assessment/initial`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          patientId: patientId || 'P001',
-          taskResponses,
-        }),
-      });
+    const headers = await this.getAuthHeaders();
+    const response = await fetch(`${BACKEND_BASE_URL}/assessment/initial`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        patientId: patientId || 'P001',
+        taskResponses,
+      }),
+    });
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.result) {
-          console.log('[ApiService] Received authoritative Axiom AI baseline:', data.result);
-          return data.result as AssessmentResult;
-        }
-      }
-      throw new Error(`Server returned status ${response.status}`);
-    } catch (err: any) {
-      console.warn('[ApiService] Backend/AI unavailable, using authentic client-side evaluation fallback:', err.message);
-      // Clean fallback to deterministic client engine
-      return evaluateAssessment({});
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(
+        errData.error || `Axiom AI Assessment service returned status ${response.status}`
+      );
     }
+
+    const data = await response.json();
+    if (data.success && data.result) {
+      console.log('[ApiService] Authoritative Axiom AI baseline received:', data.result);
+      return data.result as AssessmentResult;
+    }
+
+    throw new Error(data.error || 'Failed to receive authoritative AI baseline.');
   }
 
   /**
-   * Fetches personalized AI recommendation for an existing patient.
+   * Fetches personalized AI recommendation for a patient.
    */
   async getRecommendation(
     patientId: string = 'P001',
@@ -114,9 +131,10 @@ class ApiService {
         url.searchParams.append('preferredActivity', preferredActivity);
       }
 
+      const headers = await this.getAuthHeaders();
       const res = await fetch(url.toString(), {
         method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
       });
 
       if (res.ok) {
@@ -133,7 +151,7 @@ class ApiService {
   }
 
   /**
-   * Records completed game session to update patient history.
+   * Records completed game session into Supabase.
    */
   async recordGameSession(sessionData: {
     patientId: string;
@@ -148,9 +166,10 @@ class ApiService {
     hintsUsed: number;
   }): Promise<boolean> {
     try {
+      const headers = await this.getAuthHeaders();
       const res = await fetch(`${BACKEND_BASE_URL}/sessions/record`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(sessionData),
       });
       return res.ok;
@@ -161,7 +180,7 @@ class ApiService {
   }
 
   /**
-   * Sends voice / natural language query to the assistant bridge.
+   * Queries the assistant in the context of the authenticated patient.
    */
   async queryAssistant(
     query: string,
@@ -173,11 +192,13 @@ class ApiService {
     actionType?: string;
     actionTarget?: string;
     gameMapping?: any;
+    medicine?: any;
   } | null> {
     try {
+      const headers = await this.getAuthHeaders();
       const res = await fetch(`${BACKEND_BASE_URL}/assistant/query`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ query, patientId }),
       });
       if (res.ok) {
@@ -188,6 +209,35 @@ class ApiService {
       console.warn('[ApiService] Assistant query API failed:', err.message);
       return null;
     }
+  }
+
+  /**
+   * Links a patient to caregiver via secure invite code.
+   */
+  async linkCaregiverPatient(inviteCode: string, relationship?: string) {
+    const headers = await this.getAuthHeaders();
+    const res = await fetch(`${BACKEND_BASE_URL}/caregiver/link-patient`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ inviteCode, relationship }),
+    });
+    return await res.json();
+  }
+
+  /**
+   * Gets linked patients for caregiver.
+   */
+  async getCaregiverPatients() {
+    const headers = await this.getAuthHeaders();
+    const res = await fetch(`${BACKEND_BASE_URL}/caregiver/patients`, {
+      method: 'GET',
+      headers,
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return data.patients || [];
+    }
+    return [];
   }
 }
 

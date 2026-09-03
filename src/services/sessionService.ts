@@ -1,6 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import { AssessmentResultOutput } from '../adapters/assessmentAdapter';
+import { dbService } from './supabaseBackend';
+import { mapFrontendGameToAiActivity } from '../adapters/gameAdapter';
 
 export interface RecordedGameSession {
   sessionId: string;
@@ -26,100 +28,132 @@ export interface PatientProfileRecord {
   language: string;
   cognitiveBaseline?: string;
   focusDomain?: string;
+  inviteCode?: string;
   latestAssessment?: AssessmentResultOutput;
 }
 
-// In-memory persistent stores for fast SIH prototype responsiveness
-const patientStore: Map<string, PatientProfileRecord> = new Map();
-const assessmentStore: Map<string, AssessmentResultOutput[]> = new Map();
-const gameSessionStore: Map<string, RecordedGameSession[]> = new Map();
-
-// Initialize default demo patient Asha Sharma (P001)
-const defaultPatient: PatientProfileRecord = {
-  id: 'P001',
-  name: 'Asha Sharma',
-  age: 68,
-  gender: 'Female',
-  location: 'Guwahati, Assam (NER)',
-  language: 'en',
-  cognitiveBaseline: 'Mild Cognitive Support',
-  focusDomain: 'memory',
-};
-patientStore.set('P001', defaultPatient);
-patientStore.set('patient-asha-001', { ...defaultPatient, id: 'patient-asha-001' });
-
-import { mapFrontendGameToAiActivity } from '../adapters/gameAdapter';
-
-// Resolve path to AI dataset
+// Path to local AI dataset
 const CSV_FILE_PATH = fs.existsSync(path.resolve(process.cwd(), 'AI/data/patient_sessions.csv'))
   ? path.resolve(process.cwd(), 'AI/data/patient_sessions.csv')
   : path.resolve(__dirname, '../../AI/data/patient_sessions.csv');
 
 /**
- * Gets or creates a patient profile.
+ * Gets or creates a patient profile in Supabase.
  */
-export function getOrCreatePatient(patientId: string, name?: string): PatientProfileRecord {
-  const existing = patientStore.get(patientId);
-  if (existing) return existing;
+export async function getOrCreatePatient(
+  patientId: string,
+  name?: string
+): Promise<PatientProfileRecord> {
+  const existing = await dbService.getPatientProfile(patientId);
+  if (existing) {
+    return {
+      id: existing.user_id || existing.id,
+      name: existing.name,
+      age: existing.age,
+      gender: existing.gender,
+      location: existing.location,
+      language: existing.preferred_language,
+      cognitiveBaseline: existing.cognitive_baseline,
+      focusDomain: existing.focus_domain,
+      inviteCode: existing.invite_code,
+    };
+  }
 
-  const newPatient: PatientProfileRecord = {
-    id: patientId,
-    name: name || `Patient ${patientId}`,
+  const newPatient = await dbService.upsertPatientProfile({
+    userId: patientId,
+    name: name || `Patient ${patientId.slice(0, 6)}`,
     age: 68,
     gender: 'Prefer not to say',
     location: 'Guwahati, Assam (NER)',
     language: 'en',
+  });
+
+  return {
+    id: newPatient?.user_id || newPatient?.id || patientId,
+    name: newPatient?.name || name || 'Asha Devi',
+    age: newPatient?.age || 68,
+    gender: newPatient?.gender || 'Female',
+    location: newPatient?.location || 'Guwahati, Assam (NER)',
+    language: newPatient?.preferred_language || 'en',
+    cognitiveBaseline: newPatient?.cognitive_baseline || 'Mild Cognitive Support',
+    focusDomain: newPatient?.focus_domain || 'memory',
+    inviteCode: newPatient?.invite_code || 'AX-ASH-4821',
   };
-  patientStore.set(patientId, newPatient);
-  return newPatient;
 }
 
 /**
- * Saves a completed assessment result for a patient.
+ * Saves a completed assessment result for a patient into Supabase.
  */
-export function saveAssessmentResult(result: AssessmentResultOutput): void {
-  const patient = getOrCreatePatient(result.patientId);
-  patient.focusDomain = result.focusDomain;
-  patient.cognitiveBaseline = `Axiom Score: ${result.overallScore}% (${result.focusDomain})`;
-  patient.latestAssessment = result;
+export async function saveAssessmentResult(result: AssessmentResultOutput): Promise<void> {
+  // 1. Update patient profile
+  await dbService.upsertPatientProfile({
+    userId: result.patientId,
+    name: result.patientId === 'P001' ? 'Asha Devi' : undefined,
+    focusDomain: result.focusDomain,
+    cognitiveBaseline: `Axiom Score: ${result.overallScore}% (${result.focusDomain})`,
+  });
 
-  const list = assessmentStore.get(result.patientId) || [];
-  list.unshift(result);
-  assessmentStore.set(result.patientId, list);
-}
-
-/**
- * Retrieves assessment history for a patient.
- */
-export function getAssessmentHistory(patientId: string): AssessmentResultOutput[] {
-  return assessmentStore.get(patientId) || [];
-}
-
-/**
- * Records a game session in memory and appends to AI/data/patient_sessions.csv.
- */
-export function recordCompletedGameSession(session: RecordedGameSession): void {
-  const list = gameSessionStore.get(session.patientId) || [];
-  list.unshift(session);
-  gameSessionStore.set(session.patientId, list);
-
-  // Map to AI activity and domain
-  const { activity: aiActivity, domain: aiDomain } = mapFrontendGameToAiActivity(
-    session.gameId,
-    session.domain
+  // 2. Persist to Supabase assessment_sessions, assessment_responses, and cognitive_baselines
+  await dbService.saveAssessmentSession(
+    {
+      sessionId: result.sessionId,
+      patientId: result.patientId,
+      overallScore: result.overallScore,
+      focusDomain: result.focusDomain,
+      aiSummary: result.aiSummary,
+      clinicalNotes: result.clinicalNotes,
+      recommendedActivities: result.recommendedActivities,
+      completedAt: result.completedAt,
+    },
+    result.taskResponses || [],
+    {
+      domainScores: result.domainScores,
+      rawAiBaseline: result.rawAiBaseline,
+    }
   );
+}
 
-  // Attempt to append session to AI patient_sessions.csv for continuous ML learning
+/**
+ * Retrieves assessment history for a patient from Supabase.
+ */
+export async function getAssessmentHistory(patientId: string): Promise<any[]> {
+  return dbService.getAssessmentHistory(patientId);
+}
+
+/**
+ * Records a game session into Supabase and optionally syncs with AI dataset.
+ */
+export async function recordCompletedGameSession(session: RecordedGameSession): Promise<void> {
+  // 1. Persist to Supabase game_sessions table
+  await dbService.recordGameSession({
+    sessionId: session.sessionId,
+    patientId: session.patientId,
+    gameId: session.gameId,
+    gameTitle: session.gameTitle,
+    domain: session.domain,
+    level: session.level,
+    difficultyTier: session.difficultyTier,
+    score: session.score,
+    accuracy: session.accuracy,
+    durationSeconds: session.durationSeconds,
+    hintsUsed: session.hintsUsed,
+    completedAt: session.completedAt,
+  });
+
+  // 2. Append to local CSV dataset if present
   try {
     if (fs.existsSync(CSV_FILE_PATH)) {
+      const { activity: aiActivity, domain: aiDomain } = mapFrontendGameToAiActivity(
+        session.gameId,
+        session.domain
+      );
       const accuracyNormalized = Math.max(0, Math.min(1, session.accuracy / 100));
       const responseTimeSec = Math.max(1, session.durationSeconds);
-      const sessionNumber = list.length + 2; // Progressive session index
 
       const csvLine = [
         session.patientId,
         session.sessionId.slice(0, 8),
-        sessionNumber,
+        Math.floor(Date.now() / 1000) % 1000,
         aiDomain,
         aiActivity,
         session.difficultyTier || 1,
@@ -128,7 +162,7 @@ export function recordCompletedGameSession(session: RecordedGameSession): void {
         1,
         session.hintsUsed || 0,
         1,
-        'happy',
+        'neutral',
         accuracyNormalized.toFixed(3),
         responseTimeSec.toFixed(2),
         accuracyNormalized.toFixed(3),
@@ -139,7 +173,6 @@ export function recordCompletedGameSession(session: RecordedGameSession): void {
       ].join(',');
 
       fs.appendFileSync(CSV_FILE_PATH, `\n${csvLine}`, 'utf8');
-      console.log(`[SessionService] Appended session for ${session.patientId} (${aiActivity} in ${aiDomain}) to ${CSV_FILE_PATH}`);
     }
   } catch (err: any) {
     console.warn('[SessionService] Could not append to CSV:', err.message);
@@ -147,8 +180,8 @@ export function recordCompletedGameSession(session: RecordedGameSession): void {
 }
 
 /**
- * Gets recent game session logs for a patient.
+ * Gets recent game session logs for a patient from Supabase.
  */
-export function getGameSessionHistory(patientId: string): RecordedGameSession[] {
-  return gameSessionStore.get(patientId) || [];
+export async function getGameSessionHistory(patientId: string): Promise<any[]> {
+  return dbService.getGameSessions(patientId);
 }

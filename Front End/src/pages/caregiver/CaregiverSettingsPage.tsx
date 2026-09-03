@@ -3,7 +3,9 @@ import { useApp } from '../../context/AppContext';
 import { CaregiverLayout } from '../../components/layout/CaregiverLayout';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
-import { Settings, Bell, Shield, User, Users, Mail, Phone, Check } from 'lucide-react';
+import { Settings, Bell, Shield, User, Users, Mail, Phone, Check, Database, RefreshCw, Cloud, Activity, Copy } from 'lucide-react';
+import { SUPABASE_URL, getSupabaseHost } from '../../services/supabaseClient';
+import { DatabaseStatusModal } from '../../components/common/DatabaseStatusModal';
 
 export const CaregiverSettingsPage: React.FC = () => {
   const { caregivers, patient, showToast } = useApp();
@@ -14,6 +16,7 @@ export const CaregiverSettingsPage: React.FC = () => {
   const [missedMedAlert, setMissedMedAlert] = useState(true);
   const [cognitiveShiftAlert, setCognitiveShiftAlert] = useState(true);
   const [inviteEmail, setInviteEmail] = useState('');
+  const [showDbModal, setShowDbModal] = useState(false);
 
   const handleInvite = (e: React.FormEvent) => {
     e.preventDefault();
@@ -126,7 +129,50 @@ export const CaregiverSettingsPage: React.FC = () => {
             </form>
           </div>
         </Card>
+
+        {/* Supabase Cloud Database & Storage */}
+        <Card className="p-6 space-y-4 border-teal-100 bg-gradient-to-br from-white to-teal-50/30">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+              <Database className="text-teal-600" size={20} />
+              Supabase Cloud Database & Storage
+            </h3>
+            <span className="bg-teal-100 text-teal-800 text-[11px] font-bold px-2.5 py-0.5 rounded-full border border-teal-200">
+              Live Connected
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+            <div className="bg-white p-3.5 rounded-2xl border border-slate-200 space-y-1">
+              <span className="text-slate-400 font-bold block uppercase text-[10px]">Cloud Host</span>
+              <strong className="text-slate-900 text-sm break-all font-mono">{getSupabaseHost()}</strong>
+              <div className="text-[11px] text-emerald-600 font-semibold flex items-center gap-1 pt-1">
+                <Activity size={12} /> Real-time Postgres channel ready
+              </div>
+            </div>
+
+            <div className="bg-white p-3.5 rounded-2xl border border-slate-200 space-y-1">
+              <span className="text-slate-400 font-bold block uppercase text-[10px]">Active Tables</span>
+              <strong className="text-slate-900 text-sm">8 Synchronized Models</strong>
+              <p className="text-[11px] text-slate-500">Patients, Assessments, Games, Meds, Routines, Alerts</p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowDbModal(true)}
+              className="flex items-center gap-1.5 cursor-pointer font-bold"
+            >
+              <Database size={15} className="text-teal-600" />
+              Manage Cloud Sync & SQL Schema
+            </Button>
+          </div>
+        </Card>
       </div>
+
+      <DatabaseStatusModal isOpen={showDbModal} onClose={() => setShowDbModal(false)} />
     </CaregiverLayout>
   );
 };

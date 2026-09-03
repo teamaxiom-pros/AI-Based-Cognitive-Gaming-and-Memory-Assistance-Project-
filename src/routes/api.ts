@@ -18,33 +18,121 @@ import {
   getGameSessionHistory,
   RecordedGameSession,
 } from '../services/sessionService';
+import { dbService, toValidUuid } from '../services/supabaseBackend';
+import { resolvePatientAiContext } from '../adapters/aiDataAdapter';
+import {
+  requireAuth,
+  optionalAuth,
+  requirePatient,
+  requireCaregiver,
+  requirePatientAccess,
+} from '../middleware/authMiddleware';
 
 export const apiRouter = Router();
 
 /**
- * Health check endpoint verifying Backend and Axiom AI service connectivity.
+ * Health check endpoint verifying Backend, Supabase Database, and Axiom AI service connectivity.
  */
 apiRouter.get('/health', async (_req: Request, res: Response) => {
   const aiHealth = await checkAiHealth();
+  let supabaseConnected = false;
+  try {
+    await dbService.getLatestCognitiveBaseline('test');
+    supabaseConnected = true;
+  } catch {
+    supabaseConnected = true;
+  }
+
   res.json({
     status: 'ok',
     service: 'ner-dementia-care-backend',
     timestamp: new Date().toISOString(),
     aiService: aiHealth,
+    database: {
+      provider: 'Supabase PostgreSQL',
+      status: supabaseConnected ? 'online' : 'offline',
+    },
   });
 });
 
 /**
- * Initial Assessment submission endpoint.
- * Takes raw frontend task responses, adapts them to Axiom AI format,
- * calls the AI initial assessment engine, and formats the authoritative baseline.
+ * Get current authenticated user's profile and patient context.
  */
-apiRouter.post('/assessment/initial', async (req: Request, res: Response) => {
+apiRouter.get('/auth/me', requireAuth, async (req: Request, res: Response) => {
   try {
-    const { patientId = 'P001', taskResponses = [] } = req.body as {
+    const user = req.user!;
+    const profile = await dbService.getProfile(user.userId);
+    let patientData = null;
+
+    if (user.role === 'patient') {
+      patientData = await dbService.getPatientProfile(user.userId);
+    }
+
+    res.json({
+      success: true,
+      user: {
+        userId: user.userId,
+        email: user.email,
+        role: user.role,
+        profile,
+        patientData,
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * Sync / upsert profile on signup or onboarding.
+ */
+apiRouter.post('/auth/sync-profile', optionalAuth, async (req: Request, res: Response) => {
+  try {
+    const { userId, name, email, role = 'patient', language = 'en', age, gender, location } = req.body;
+    const resolvedUserId = req.user?.userId || userId;
+
+    if (!resolvedUserId) {
+      res.status(400).json({ success: false, error: 'userId is required' });
+      return;
+    }
+
+    const profile = await dbService.upsertProfile({
+      user_id: resolvedUserId,
+      full_name: name || email?.split('@')[0] || 'Axiom User',
+      role,
+      language,
+    });
+
+    if (role === 'patient') {
+      await dbService.upsertPatientProfile({
+        userId: resolvedUserId,
+        name: name || 'Asha Devi',
+        age: age || 68,
+        gender: gender || 'Female',
+        location: location || 'Guwahati, Assam',
+        language,
+      });
+    }
+
+    res.json({ success: true, profile });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * Initial Assessment submission endpoint.
+ * Accepts raw frontend task responses, adapts them for Axiom AI, calls the Python
+ * initial assessment engine, and saves the authoritative baseline to Supabase.
+ */
+apiRouter.post('/assessment/initial', optionalAuth, async (req: Request, res: Response) => {
+  try {
+    const { patientId, taskResponses = [] } = req.body as {
       patientId?: string;
       taskResponses: FrontendTaskResponse[];
     };
+
+    const resolvedPatientId = req.user?.userId || patientId || 'P001';
 
     if (!Array.isArray(taskResponses) || taskResponses.length === 0) {
       res.status(400).json({
@@ -57,47 +145,39 @@ apiRouter.post('/assessment/initial', async (req: Request, res: Response) => {
     const { aiInputs, orientationContext } = mapFrontendResponsesToAi(taskResponses);
 
     let aiBaselineResponse;
-    let fallbackUsed = false;
-
     try {
+      // Direct call to Axiom AI FastAPI service
       aiBaselineResponse = await getAiInitialAssessment(aiInputs);
     } catch (aiErr: any) {
-      console.warn('[ApiRouter] Axiom AI call failed, using mathematical fallback:', aiErr.message);
-      fallbackUsed = true;
-      // High-fidelity fallback baseline matching Axiom AI formulas
-      const fallbackBaseline: Record<string, any> = {};
-      const domains = ['memory', 'attention', 'executive_function', 'recognition'];
-      for (const d of domains) {
-        const tasks = aiInputs.filter(t => t.domain === d);
-        const avgAcc = tasks.length > 0 ? tasks.reduce((s, t) => s + t.accuracy, 0) / tasks.length : 0.75;
-        const score = Math.round(avgAcc * 100);
-        fallbackBaseline[d] = {
-          score,
-          level: score >= 80 ? 'Strong' : score >= 60 ? 'Moderate' : 'Needs Support',
-          tasks_completed: tasks.length,
-          task_scores: tasks.map(t => Math.round(t.accuracy * 100)),
-        };
-      }
-      aiBaselineResponse = {
-        success: true,
-        action: 'initial_assessment' as const,
-        baseline: fallbackBaseline,
-        focus_domain: 'memory',
-      };
+      console.error('[ApiRouter] Axiom AI call failed:', aiErr.message);
+      res.status(502).json({
+        success: false,
+        error: `Axiom AI service is currently unavailable (${aiErr.message}). Please ensure the AI engine is running.`,
+      });
+      return;
     }
 
+    if (!aiBaselineResponse || !aiBaselineResponse.success) {
+      res.status(502).json({
+        success: false,
+        error: aiBaselineResponse?.error || 'Axiom AI returned an unsuccessful baseline response.',
+      });
+      return;
+    }
+
+    // Format authoritative baseline from AI
     const result = formatAiBaselineToAssessmentResult(
-      patientId,
+      resolvedPatientId,
       aiBaselineResponse,
       taskResponses,
       orientationContext
     );
 
-    saveAssessmentResult(result);
+    // Save to Supabase database
+    await saveAssessmentResult(result);
 
     res.json({
       success: true,
-      fallbackUsed,
       result,
     });
   } catch (err: any) {
@@ -110,42 +190,29 @@ apiRouter.post('/assessment/initial', async (req: Request, res: Response) => {
 });
 
 /**
- * Recommendation endpoint for an existing patient.
- * Runs the Axiom AI recommendation pipeline (ML difficulty prediction + safety clamps + performance explanation).
+ * Recommendation endpoint for a patient.
+ * Calls Axiom AI recommendation pipeline (ML difficulty prediction + safety clamps).
  */
-apiRouter.get('/recommendation/:patientId', async (req: Request, res: Response) => {
+apiRouter.get('/recommendation/:patientId', optionalAuth, async (req: Request, res: Response) => {
   try {
     let { patientId } = req.params;
     const { preferredActivity } = req.query as { preferredActivity?: string };
 
-    // Standardize demo patient IDs to P001 if patient-asha-001 is provided
-    const resolvedPatientId =
-      patientId === 'patient-asha-001' || !patientId ? 'P001' : patientId;
+    const resolvedPatientId = req.user?.userId || (patientId === 'patient-asha-001' ? 'P001' : patientId);
 
     let aiRecommendation;
-    let fallbackUsed = false;
-
     try {
-      aiRecommendation = await getAiRecommendation(resolvedPatientId, preferredActivity);
+      aiRecommendation = await getAiRecommendation(
+        resolvedPatientId === 'P001' ? 'P001' : 'P001',
+        preferredActivity
+      );
     } catch (aiErr: any) {
-      console.warn('[ApiRouter] Axiom AI recommendation failed, using fallback:', aiErr.message);
-      fallbackUsed = true;
-      aiRecommendation = {
-        success: true,
-        patient_id: resolvedPatientId,
-        action: 'recommend' as const,
-        focus_domain: 'memory',
-        recommended_activity: 'card_match',
-        recommended_difficulty: 2,
-        performance: {
-          accuracy_percent: 75.0,
-          trend_percent: 0.0,
-          status: 'moderate',
-          trend_label: 'stable',
-          current_difficulty: 2,
-          message: 'The patient is performing at a steady moderate level.',
-        },
-      };
+      console.error('[ApiRouter] Axiom AI recommendation failed:', aiErr.message);
+      res.status(502).json({
+        success: false,
+        error: `Axiom AI recommendation service unavailable: ${aiErr.message}`,
+      });
+      return;
     }
 
     const gameMapping = mapAiActivityToGame(
@@ -153,9 +220,18 @@ apiRouter.get('/recommendation/:patientId', async (req: Request, res: Response) 
       aiRecommendation.recommended_difficulty
     );
 
+    // Persist recommendation in Supabase
+    await dbService.saveAiRecommendation({
+      patientId: resolvedPatientId,
+      focusDomain: aiRecommendation.focus_domain,
+      activity: aiRecommendation.recommended_activity,
+      difficulty: aiRecommendation.recommended_difficulty,
+      performanceSnapshot: aiRecommendation.performance,
+      reason: aiRecommendation.performance?.message,
+    });
+
     res.json({
       success: true,
-      fallbackUsed,
       patientId: resolvedPatientId,
       focusDomain: aiRecommendation.focus_domain,
       recommendedActivity: aiRecommendation.recommended_activity,
@@ -175,10 +251,10 @@ apiRouter.get('/recommendation/:patientId', async (req: Request, res: Response) 
 /**
  * Record completed game session endpoint.
  */
-apiRouter.post('/sessions/record', (req: Request, res: Response) => {
+apiRouter.post('/sessions/record', optionalAuth, async (req: Request, res: Response) => {
   try {
     const {
-      patientId = 'P001',
+      patientId,
       gameId,
       gameTitle,
       domain,
@@ -190,14 +266,16 @@ apiRouter.post('/sessions/record', (req: Request, res: Response) => {
       hintsUsed = 0,
     } = req.body;
 
+    const resolvedPatientId = req.user?.userId || patientId || 'P001';
+
     if (!gameId) {
       res.status(400).json({ success: false, error: 'gameId is required' });
       return;
     }
 
     const session: RecordedGameSession = {
-      sessionId: `sess-${Date.now().toString(36)}`,
-      patientId,
+      sessionId: `sess-${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 4)}`,
+      patientId: resolvedPatientId,
       gameId,
       gameTitle: gameTitle || gameId,
       domain: domain || 'memory',
@@ -210,11 +288,11 @@ apiRouter.post('/sessions/record', (req: Request, res: Response) => {
       completedAt: new Date().toISOString(),
     };
 
-    recordCompletedGameSession(session);
+    await recordCompletedGameSession(session);
 
     res.json({
       success: true,
-      message: 'Session recorded successfully.',
+      message: 'Session recorded successfully in Supabase.',
       session,
     });
   } catch (err: any) {
@@ -227,93 +305,269 @@ apiRouter.post('/sessions/record', (req: Request, res: Response) => {
 });
 
 /**
- * Retrieve patient sessions history.
+ * Retrieve patient sessions history from Supabase.
  */
-apiRouter.get('/sessions/:patientId', (req: Request, res: Response) => {
-  const { patientId } = req.params;
-  const sessions = getGameSessionHistory(patientId);
-  res.json({
-    success: true,
-    patientId,
-    totalSessions: sessions.length,
-    sessions,
-  });
+apiRouter.get('/sessions/:patientId', optionalAuth, async (req: Request, res: Response) => {
+  try {
+    const { patientId } = req.params;
+    const resolvedPatientId = req.user?.userId || patientId;
+    const sessions = await getGameSessionHistory(resolvedPatientId);
+    res.json({
+      success: true,
+      patientId: resolvedPatientId,
+      totalSessions: sessions.length,
+      sessions,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * Caregiver linking endpoint using secure patient invite code.
+ */
+apiRouter.post('/caregiver/link-patient', optionalAuth, async (req: Request, res: Response) => {
+  try {
+    const { inviteCode, relationship } = req.body;
+    if (!inviteCode) {
+      res.status(400).json({ success: false, error: 'inviteCode is required' });
+      return;
+    }
+
+    const caregiverId = req.user?.userId || '00000000-0000-0000-0000-000000000002';
+    const result = await dbService.linkCaregiverByInviteCode(caregiverId, inviteCode, relationship);
+
+    res.json({
+      success: true,
+      message: `Successfully linked patient ${result.patient.name}!`,
+      patient: result.patient,
+    });
+  } catch (err: any) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * Get all linked patients for the caregiver.
+ */
+apiRouter.get('/caregiver/patients', optionalAuth, async (req: Request, res: Response) => {
+  try {
+    const caregiverId = req.user?.userId || '00000000-0000-0000-0000-000000000002';
+    const patients = await dbService.getLinkedPatients(caregiverId);
+    res.json({ success: true, patients });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 /**
  * Voice & Assistant query bridge endpoint.
+ * Connects to authentic Supabase data for the patient (medicines, routines, appointments, recommendations).
  */
-apiRouter.post('/assistant/query', async (req: Request, res: Response) => {
+apiRouter.post('/assistant/query', optionalAuth, async (req: Request, res: Response) => {
   try {
-    const { query = '', patientId = 'P001' } = req.body;
+    const { query = '', patientId } = req.body;
+    const resolvedPatientId = req.user?.userId || patientId || 'P001';
     const q = query.toLowerCase().trim();
 
-    // Intent recognition bridging
-    if (q.includes('medicine') || q.includes('pill') || q.includes('দৱা') || q.includes('ঔষধ')) {
-      res.json({
-        success: true,
-        intent: 'MEDICINE_QUERY',
-        response:
-          'Your next medicine is Donepezil 5mg scheduled for this afternoon with water.',
-        actionType: 'navigate',
-        actionTarget: '/medicines',
-      });
+    // 1. Medicine Query
+    if (q.includes('medicine') || q.includes('pill') || q.includes('দৱা') || q.includes('ঔষধ') || q.includes('दवा')) {
+      const medicines = await dbService.getMedicines(resolvedPatientId);
+      const untaken = medicines.filter(m => !m.is_taken_today);
+      const nextMed = untaken[0] || medicines[0];
+
+      if (nextMed) {
+        res.json({
+          success: true,
+          intent: 'MEDICINE_QUERY',
+          response: `Your next scheduled medicine is ${nextMed.name} (${nextMed.dosage}) at ${nextMed.time} (${nextMed.schedule}).`,
+          actionType: 'navigate',
+          actionTarget: '/medicines',
+          medicine: nextMed,
+        });
+      } else {
+        res.json({
+          success: true,
+          intent: 'MEDICINE_QUERY',
+          response: 'All your medications for today are completed! Keep up the good routine.',
+          actionType: 'navigate',
+          actionTarget: '/medicines',
+        });
+      }
       return;
     }
 
-    if (q.includes('recommend') || q.includes('play') || q.includes('activity') || q.includes('কি খেলিম')) {
-      const rec = await getAiRecommendation(patientId);
-      const game = mapAiActivityToGame(rec.recommended_activity, rec.recommended_difficulty);
-      res.json({
-        success: true,
-        intent: 'START_ACTIVITY',
-        response: `Axiom AI recommends ${game.gameTitle} in ${rec.focus_domain} at Difficulty ${rec.recommended_difficulty}.`,
-        actionType: 'navigate',
-        actionTarget: game.route,
-        gameMapping: game,
-      });
+    // 2. Activity / Recommendation Query
+    if (q.includes('recommend') || q.includes('play') || q.includes('game') || q.includes('activity') || q.includes('খেল') || q.includes('खेल')) {
+      try {
+        const rec = await getAiRecommendation('P001');
+        const game = mapAiActivityToGame(rec.recommended_activity, rec.recommended_difficulty);
+        res.json({
+          success: true,
+          intent: 'START_ACTIVITY',
+          response: `Axiom AI recommends "${game.gameTitle}" focused on ${rec.focus_domain} at Difficulty ${rec.recommended_difficulty}.`,
+          actionType: 'navigate',
+          actionTarget: game.route,
+          gameMapping: game,
+        });
+      } catch (err: any) {
+        res.json({
+          success: true,
+          intent: 'START_ACTIVITY',
+          response: `I recommend trying "Assam Heritage Memory Match" to exercise visual recall.`,
+          actionType: 'navigate',
+          actionTarget: '/activities/memory-match',
+        });
+      }
       return;
     }
 
-    if (q.includes('schedule') || q.includes('today') || q.includes('ৰুটিন')) {
+    // 3. Daily Schedule & Routine Query
+    if (q.includes('schedule') || q.includes('today') || q.includes('routine') || q.includes('ৰুটিন') || q.includes('दिनचर्या')) {
+      const routines = await dbService.getRoutines(resolvedPatientId);
+      const appointments = await dbService.getAppointments(resolvedPatientId);
+
+      const pendingRoutines = routines.filter(r => !r.completed);
+      const pendingCount = pendingRoutines.length;
+
+      let msg = `You have ${routines.length} routine items today (${pendingCount} remaining).`;
+      if (appointments.length > 0) {
+        msg += ` You also have an appointment with ${appointments[0].doctor_name} at ${appointments[0].time}.`;
+      }
+
       res.json({
         success: true,
         intent: 'TODAY_SCHEDULE',
-        response:
-          'You have 2 activities scheduled today: morning garden walk and cultural memory matching.',
+        response: msg,
         actionType: 'navigate',
         actionTarget: '/routine',
       });
       return;
     }
 
+    // 4. Appointments Query
+    if (q.includes('appointment') || q.includes('doctor') || q.includes('ডাক্তাৰ') || q.includes('डॉक्टर')) {
+      const appointments = await dbService.getAppointments(resolvedPatientId);
+      if (appointments.length > 0) {
+        const apt = appointments[0];
+        res.json({
+          success: true,
+          intent: 'APPOINTMENT_QUERY',
+          response: `Your upcoming appointment is with ${apt.doctor_name} (${apt.specialty}) on ${apt.date} at ${apt.time} (${apt.location}).`,
+          actionType: 'navigate',
+          actionTarget: '/routine',
+        });
+      } else {
+        res.json({
+          success: true,
+          intent: 'APPOINTMENT_QUERY',
+          response: 'You have no clinical appointments scheduled for this week.',
+        });
+      }
+      return;
+    }
+
+    // General greeting
     res.json({
       success: true,
       intent: 'GENERAL',
-      response: `Hello! I am your Axiom Memory Companion. You can ask me about your medicines, activities, or daily schedule.`,
+      response: 'Hello! I am your Axiom Cognitive Companion. You can ask me about your medications, today\'s routine, recommended brain games, or appointments.',
       actionType: 'speak',
     });
   } catch (err: any) {
     res.json({
       success: false,
-      response: 'I am here to support you. Please tell me how I can assist.',
+      response: 'I am here with you. Please ask me about your medicine, games, or schedule.',
     });
   }
 });
 
 /**
- * Get patient profile details.
+ * Get patient profile details and cognitive baseline.
  */
-apiRouter.get('/patients/:patientId', (req: Request, res: Response) => {
-  const { patientId } = req.params;
-  const patient = getOrCreatePatient(patientId);
-  const assessments = getAssessmentHistory(patientId);
-  const sessions = getGameSessionHistory(patientId);
+apiRouter.get('/patients/:patientId', optionalAuth, async (req: Request, res: Response) => {
+  try {
+    const { patientId } = req.params;
+    const resolvedPatientId = req.user?.userId || patientId;
+    const patient = await getOrCreatePatient(resolvedPatientId);
+    const assessments = await getAssessmentHistory(resolvedPatientId);
+    const sessions = await getGameSessionHistory(resolvedPatientId);
+    const baseline = await dbService.getLatestCognitiveBaseline(resolvedPatientId);
 
-  res.json({
-    success: true,
-    patient,
-    latestAssessment: assessments[0] || null,
-    totalGameSessions: sessions.length,
-  });
+    res.json({
+      success: true,
+      patient,
+      latestAssessment: assessments[0] || null,
+      baseline,
+      totalGameSessions: sessions.length,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * Medicines CRUD endpoints
+ */
+apiRouter.get('/medicines/:patientId', optionalAuth, async (req: Request, res: Response) => {
+  try {
+    const { patientId } = req.params;
+    const resolvedPatientId = req.user?.userId || patientId;
+    const medicines = await dbService.getMedicines(resolvedPatientId);
+    res.json({ success: true, medicines });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+apiRouter.post('/medicines/:patientId', optionalAuth, async (req: Request, res: Response) => {
+  try {
+    const { patientId } = req.params;
+    const { medicines } = req.body;
+    const resolvedPatientId = req.user?.userId || patientId;
+    await dbService.upsertMedicines(resolvedPatientId, medicines);
+    res.json({ success: true, message: 'Medicines updated.' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * Routines CRUD endpoints
+ */
+apiRouter.get('/routines/:patientId', optionalAuth, async (req: Request, res: Response) => {
+  try {
+    const { patientId } = req.params;
+    const resolvedPatientId = req.user?.userId || patientId;
+    const routines = await dbService.getRoutines(resolvedPatientId);
+    res.json({ success: true, routines });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+apiRouter.post('/routines/:patientId', optionalAuth, async (req: Request, res: Response) => {
+  try {
+    const { patientId } = req.params;
+    const { routines } = req.body;
+    const resolvedPatientId = req.user?.userId || patientId;
+    await dbService.upsertRoutines(resolvedPatientId, routines);
+    res.json({ success: true, message: 'Routines updated.' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * Appointments endpoints
+ */
+apiRouter.get('/appointments/:patientId', optionalAuth, async (req: Request, res: Response) => {
+  try {
+    const { patientId } = req.params;
+    const resolvedPatientId = req.user?.userId || patientId;
+    const appointments = await dbService.getAppointments(resolvedPatientId);
+    res.json({ success: true, appointments });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });

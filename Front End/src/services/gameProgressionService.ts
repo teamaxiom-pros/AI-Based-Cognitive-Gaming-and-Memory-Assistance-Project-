@@ -328,6 +328,8 @@ export function calculateDomainProgress(): Record<CognitiveDomain, CognitiveDoma
     recognition: { games: ['object-recognition', 'symbol-matching', 'spatial-memory'], name: 'Visual Recognition' },
     sequencing: { games: ['sequence-builder', 'category-sorting'], name: 'Temporal Sequencing' },
     orientation: { games: ['spatial-memory'], name: 'Spatial Orientation' },
+    executive_function: { games: ['sequence-builder', 'category-sorting'], name: 'Executive Function' },
+    processing_speed: { games: ['attention-finder', 'number-memory'], name: 'Processing Speed' },
   };
 
   const results: Partial<Record<CognitiveDomain, CognitiveDomainProgress>> = {};

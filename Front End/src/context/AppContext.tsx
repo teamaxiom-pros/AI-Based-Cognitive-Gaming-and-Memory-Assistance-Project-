@@ -28,6 +28,10 @@ import { translations, getNestedTranslation, formatString } from '../i18n/useTra
 import { evaluateAssessment, getLatestAssessmentResult } from '../services/assessmentEngine';
 import { UserAssessmentAnswers } from '../types';
 import { speechService } from '../services/speechService';
+import { supabaseService, DatabaseHealthReport } from '../services/supabaseService';
+import { getSupabaseHost } from '../services/supabaseClient';
+import { apiService, BackendRecommendationResult } from '../services/apiService';
+import { useAuth } from './AuthContext';
 
 interface AppContextType {
   // Mode & Navigation
@@ -51,6 +55,8 @@ interface AppContextType {
   patient: PatientProfile;
   updatePatient: (data: Partial<PatientProfile>) => void;
   caregivers: CaregiverProfile[];
+  linkedPatients: any[];
+  linkPatientWithCode: (code: string, relationship?: string) => Promise<{ success: boolean; message?: string }>;
   
   // Onboarding & Assessment
   onboardingCompleted: boolean;
@@ -81,21 +87,31 @@ interface AppContextType {
   recordActivityPlay: (activityId: string, score: number, duration?: string | number) => void;
   simulatePatientActions: () => void;
 
+  // AI Recommendation
+  latestAiRecommendation: BackendRecommendationResult | null;
+  refreshAiRecommendation: () => Promise<BackendRecommendationResult | null>;
+
   // Memory Hub
   people: MemoryPerson[];
   places: MemoryPlace[];
   albums: MemoryAlbumItem[];
 
-  // Offline & Demo State
+  // Offline, Supabase & Demo State
   isOffline: boolean;
   setIsOffline: (val: boolean) => void;
   toastMessage: string | null;
   showToast: (msg: string) => void;
   resetDemoData: () => void;
+
+  // Supabase Cloud Database
+  dbHealth: DatabaseHealthReport | null;
+  isSupabaseSyncing: boolean;
+  syncToCloud: () => Promise<void>;
+  refreshDbHealth: () => Promise<DatabaseHealthReport>;
 }
 
 const defaultAccessibility: AccessibilitySettings = {
-  textSize: 'large', // Default to large for elderly comfort
+  textSize: 'large',
   contrast: 'normal',
   voiceGuidance: true,
   voiceSpeed: 'normal',
@@ -105,8 +121,10 @@ const defaultAccessibility: AccessibilitySettings = {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, role, profile } = useAuth();
+
   // Navigation
-  const [userMode, setUserModeState] = useState<UserMode>('patient');
+  const [userMode, setUserModeState] = useState<UserMode>(role || 'patient');
   const [currentRoute, setCurrentRoute] = useState<string>('/welcome');
 
   // i18n
@@ -124,6 +142,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return saved ? JSON.parse(saved) : defaultPatient;
   });
   const [caregivers] = useState<CaregiverProfile[]>(caregiverProfiles);
+  const [linkedPatients, setLinkedPatients] = useState<any[]>([]);
 
   // Assessment & Onboarding
   const [onboardingCompleted, setOnboardingCompleted] = useState<boolean>(() => {
@@ -133,6 +152,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [assessmentResult, setAssessmentResult] = useState<AssessmentResult | null>(() => {
     return getLatestAssessmentResult('patient-asha-001') || evaluateAssessment({});
   });
+
+  // AI Recommendation
+  const [latestAiRecommendation, setLatestAiRecommendation] = useState<BackendRecommendationResult | null>(null);
 
   // Data layers
   const [medicines, setMedicines] = useState<Medicine[]>(initialMedicines);
@@ -148,15 +170,108 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isOffline, setIsOffline] = useState<boolean>(!navigator.onLine);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Supabase Database State
+  const [dbHealth, setDbHealth] = useState<DatabaseHealthReport | null>(null);
+  const [isSupabaseSyncing, setIsSupabaseSyncing] = useState<boolean>(false);
+
+  // Sync authenticated user context into patient profile
+  useEffect(() => {
+    if (user) {
+      setPatient(prev => ({
+        ...prev,
+        id: user.id,
+        name: profile?.full_name || prev.name,
+      }));
+    }
+    if (role) {
+      setUserModeState(role);
+    }
+  }, [user, role, profile]);
+
+  const refreshDbHealth = async (): Promise<DatabaseHealthReport> => {
+    try {
+      const health = await supabaseService.checkDatabaseHealth();
+      setDbHealth(health);
+      return health;
+    } catch (err: any) {
+      const fallbackReport: DatabaseHealthReport = {
+        isConfigured: true,
+        isConnected: false,
+        host: getSupabaseHost(),
+        url: 'https://bhbvuyiiccsujrgsfncn.supabase.co',
+        latencyMs: null,
+        status: 'offline',
+        errorMessage: err.message,
+        syncedTables: {
+          patients: false,
+          assessment_sessions: false,
+          game_sessions: false,
+          medicines: false,
+          routine_items: false,
+          alerts: false,
+          appointments: false,
+        },
+      };
+      setDbHealth(fallbackReport);
+      return fallbackReport;
+    }
+  };
+
+  // Initial Database Health Check & Sync Setup
+  useEffect(() => {
+    refreshDbHealth().then(report => {
+      if (report.isConnected) {
+        console.log(`[Axiom] Connected to Supabase Database at ${report.host} (${report.latencyMs}ms)`);
+      }
+    });
+  }, []);
+
+  // Fetch linked patients if in caregiver mode
+  useEffect(() => {
+    if (userMode === 'caregiver' && user) {
+      apiService.getCaregiverPatients().then(pts => {
+        setLinkedPatients(pts);
+      });
+    }
+  }, [userMode, user]);
+
+  const refreshAiRecommendation = async (): Promise<BackendRecommendationResult | null> => {
+    const rec = await apiService.getRecommendation(patient.id || 'P001');
+    if (rec) {
+      setLatestAiRecommendation(rec);
+    }
+    return rec;
+  };
+
+  const linkPatientWithCode = async (code: string, relationship: string = 'Family Caregiver') => {
+    try {
+      const res = await apiService.linkCaregiverPatient(code, relationship);
+      if (res.success) {
+        showToast(`Successfully linked to patient: ${res.patient.name}`);
+        const updated = await apiService.getCaregiverPatients();
+        setLinkedPatients(updated);
+        return { success: true, message: `Linked to ${res.patient.name}` };
+      } else {
+        showToast(res.error || 'Linking failed. Invalid code.');
+        return { success: false, message: res.error };
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Error linking patient.');
+      return { success: false, message: err.message };
+    }
+  };
+
   // Browser online/offline event listener
   useEffect(() => {
     const handleOnline = () => {
       setIsOffline(false);
-      showToast('Back online. Synced your recent activities.');
+      refreshDbHealth();
+      showToast('Back online. Synced with Supabase database.');
     };
     const handleOffline = () => {
       setIsOffline(true);
-      showToast('Offline mode active. All games and memories are accessible.');
+      refreshDbHealth();
+      showToast('Offline mode active. Local-first caching enabled.');
     };
 
     window.addEventListener('online', handleOnline);
@@ -226,6 +341,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setPatient(prev => {
       const updated = { ...prev, ...data };
       localStorage.setItem('axiom_patient', JSON.stringify(updated));
+      supabaseService.syncPatientProfile(updated).catch(err => {
+        console.warn('[Supabase Sync Error]', err);
+      });
       return updated;
     });
   };
@@ -237,6 +355,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem('axiom_assessment_result', JSON.stringify(result));
     setOnboardingCompleted(true);
     localStorage.setItem('axiom_onboarded', 'true');
+
+    supabaseService.saveAssessmentSession(patient.id, result, answers).catch(err => {
+      console.warn('[Supabase Assessment Sync Error]', err);
+    });
+
     return result;
   };
 
@@ -248,20 +371,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const timeString = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           if (newState) {
             showToast(`Marked ${med.name} as taken!`);
-            // Add alert for caregiver
-            setAlerts(currAlerts => [
-              {
-                id: `alert-${Date.now()}`,
-                title: 'Medicine Taken',
-                message: `${patient.name} confirmed taking ${med.name} (${med.dosage}) at ${timeString}.`,
-                type: 'info',
-                timestamp: `Today at ${timeString}`,
-                isAcknowledged: false,
-                category: 'medication',
-              },
-              ...currAlerts,
-            ]);
+            const alertItem: AlertItem = {
+              id: `alert-${Date.now()}`,
+              title: 'Medicine Taken',
+              message: `${patient.name} confirmed taking ${med.name} (${med.dosage}) at ${timeString}.`,
+              type: 'info',
+              timestamp: `Today at ${timeString}`,
+              isAcknowledged: false,
+              category: 'medication',
+            };
+            setAlerts(currAlerts => [alertItem, ...currAlerts]);
+            supabaseService.createAlert(patient.id, alertItem).catch(console.warn);
           }
+
+          supabaseService.updateMedicineStatus(medId, newState, timeString).catch(console.warn);
+
           return {
             ...med,
             isTakenToday: newState,
@@ -280,8 +404,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isTakenToday: false,
       history7Days: [true, true, true, true, true, true, false],
     };
-    setMedicines(prev => [...prev, newMed]);
+    const updated = [...medicines, newMed];
+    setMedicines(updated);
     showToast(`Added ${newMed.name} to medication schedule.`);
+    supabaseService.syncMedicines(patient.id, updated).catch(console.warn);
   };
 
   const toggleRoutineItem = (itemId: string) => {
@@ -293,6 +419,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (newState) {
             showToast(`Completed: ${item.title}`);
           }
+          supabaseService.updateRoutineStatus(itemId, newState, timeString).catch(console.warn);
+
           return {
             ...item,
             isCompleted: newState,
@@ -309,6 +437,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map(a => (a.id === alertId ? { ...a, isAcknowledged: true } : a))
     );
     showToast('Alert acknowledged.');
+    supabaseService.acknowledgeAlert(alertId).catch(console.warn);
   };
 
   const addAppointment = (apt: Appointment) => {
@@ -320,7 +449,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const initialHistory: ActivityLogItem[] = [
     {
       id: 'log-1',
-      activityId: 'game-memory-match',
+      activityId: 'memory-match',
       title: 'Assam Heritage Memory Match',
       date: 'Today, 10:42 AM',
       duration: '2m 14s',
@@ -330,7 +459,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     },
     {
       id: 'log-2',
-      activityId: 'game-object-recall',
+      activityId: 'picture-recall',
       title: 'Daily Objects Recall',
       date: 'Today, 09:15 AM',
       duration: '1m 45s',
@@ -340,7 +469,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     },
     {
       id: 'log-3',
-      activityId: 'game-attention-search',
+      activityId: 'attention-finder',
       title: 'Brahmaputra Garden Search',
       date: 'Yesterday, 04:30 PM',
       duration: '2m 05s',
@@ -350,7 +479,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     },
     {
       id: 'log-4',
-      activityId: 'game-pattern-sequence',
+      activityId: 'sequence-builder',
       title: 'Pattern & Shape Sequence',
       date: 'Yesterday, 11:20 AM',
       duration: '3m 10s',
@@ -400,44 +529,65 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return updated;
     });
 
-    // Add caregiver notification
-    setAlerts(currAlerts => [
-      {
-        id: `alert-act-${Date.now()}`,
-        title: 'Cognitive Game Completed',
-        message: `${patient.name} completed "${activityTitle}" with ${score}% accuracy at ${timeString}.`,
-        type: 'info',
-        timestamp: `Today at ${timeString}`,
-        isAcknowledged: false,
-        category: 'cognition',
-        actionLabel: 'Review',
-      },
-      ...currAlerts,
-    ]);
+    const alertItem: AlertItem = {
+      id: `alert-act-${Date.now()}`,
+      title: 'Cognitive Game Completed',
+      message: `${patient.name} completed "${activityTitle}" with ${score}% accuracy at ${timeString}.`,
+      type: 'info',
+      timestamp: `Today at ${timeString}`,
+      isAcknowledged: false,
+      category: 'cognition',
+      actionLabel: 'Review',
+    };
+
+    setAlerts(currAlerts => [alertItem, ...currAlerts]);
+
+    supabaseService.recordGameSession(patient.id, {
+      activityId,
+      title: activityTitle,
+      score,
+      duration: formattedDuration,
+    }).catch(console.warn);
+    supabaseService.createAlert(patient.id, alertItem).catch(console.warn);
 
     showToast(`Activity recorded (${score}% score)! Caregiver dashboard updated.`);
+  };
+
+  const syncToCloud = async () => {
+    setIsSupabaseSyncing(true);
+    try {
+      const res = await supabaseService.syncAllDataToCloud({
+        patient,
+        medicines,
+        routineItems,
+        alerts,
+        appointments,
+      });
+      showToast(res.message);
+      await refreshDbHealth();
+    } catch (err: any) {
+      showToast(`Sync error: ${err.message}`);
+    } finally {
+      setIsSupabaseSyncing(false);
+    }
   };
 
   const simulatePatientActions = () => {
     const timeString = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     
-    // Mark first 2 medicines taken
     setMedicines(prev =>
       prev.map((med, idx) =>
         idx < 2 ? { ...med, isTakenToday: true, takenAt: timeString } : med
       )
     );
 
-    // Mark first 2 routines done
     setRoutineItems(prev =>
       prev.map((r, idx) =>
         idx < 2 ? { ...r, isCompleted: true, completedAt: timeString } : r
       )
     );
 
-    // Record game play
-    recordActivityPlay('game-memory-match', 100, '1m 55s');
-
+    recordActivityPlay('memory-match', 100, '1m 55s');
     showToast('Simulated: Asha completed game, took medicines, and finished morning routine!');
   };
 
@@ -473,6 +623,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         patient,
         updatePatient,
         caregivers,
+        linkedPatients,
+        linkPatientWithCode,
         onboardingCompleted,
         setOnboardingCompleted,
         assessmentAnswers,
@@ -493,6 +645,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         activityHistory,
         recordActivityPlay,
         simulatePatientActions,
+        latestAiRecommendation,
+        refreshAiRecommendation,
         people,
         places,
         albums,
@@ -501,6 +655,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toastMessage,
         showToast,
         resetDemoData,
+        dbHealth,
+        isSupabaseSyncing,
+        syncToCloud,
+        refreshDbHealth,
       }}
     >
       {children}

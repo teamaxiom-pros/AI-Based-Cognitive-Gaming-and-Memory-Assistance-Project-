@@ -54,8 +54,8 @@ export function scoreAssessmentResponses(
     let totalResponseTimeMs = 0;
 
     domainTasks.forEach(task => {
-      const weight = Math.max(1, task.difficultyWeight);
-      totalWeightedScore += task.score * weight;
+      const weight = Math.max(1, task.difficultyWeight || 1);
+      totalWeightedScore += (task.score || 0) * weight;
       totalWeight += weight;
       if (task.isCorrect) totalCorrect++;
       totalResponseTimeMs += task.responseTimeMs || 0;

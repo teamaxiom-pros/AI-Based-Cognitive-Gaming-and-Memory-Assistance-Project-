@@ -236,8 +236,8 @@ export const AssessmentResultPage: React.FC = () => {
                             <span className="text-rose-400">NO</span>
                           )}
                         </td>
-                        <td className="py-1 text-slate-400">{(resp.responseTimeMs / 1000).toFixed(1)}s</td>
-                        <td className="py-1 font-bold text-amber-300">{resp.score}%</td>
+                        <td className="py-1 text-slate-400">{((resp.responseTimeMs || 0) / 1000).toFixed(1)}s</td>
+                        <td className="py-1 font-bold text-amber-300">{resp.score ?? 0}%</td>
                       </tr>
                     ))}
                   </tbody>

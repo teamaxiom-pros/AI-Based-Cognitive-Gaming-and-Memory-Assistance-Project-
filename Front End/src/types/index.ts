@@ -31,6 +31,7 @@ export interface PatientProfile {
   cognitiveBaseline: string; // e.g. "Mild Cognitive Support"
   joinedDate: string;
   primaryCaregiverId: string;
+  inviteCode?: string;
 }
 
 export interface CaregiverProfile {
@@ -44,7 +45,7 @@ export interface CaregiverProfile {
   role: 'Family Caregiver' | 'Clinical Specialist' | 'Nurse';
 }
 
-export type CognitiveDomain = 'orientation' | 'memory' | 'attention' | 'recognition' | 'sequencing' | 'recall';
+export type CognitiveDomain = 'orientation' | 'memory' | 'attention' | 'recognition' | 'sequencing' | 'recall' | 'executive_function' | 'processing_speed';
 
 export interface AssessmentQuestion {
   id: string;
@@ -77,23 +78,23 @@ export interface UserAssessmentAnswers {
 
 export interface AssessmentTaskResponse {
   taskId: string;
-  domain: CognitiveDomain;
-  taskTitle: string;
-  taskType: string;
-  question: string;
-  difficultyWeight: number;
-  expectedAnswer: string | string[];
-  patientAnswer: any;
-  isCorrect: boolean;
-  score: number; // 0 to 100
-  responseTimeMs: number;
-  hintsUsed: number;
-  skipped: boolean;
-  timestamp: string;
+  domain: string;
+  taskTitle?: string;
+  taskType?: string;
+  question?: string;
+  difficultyWeight?: number;
+  expectedAnswer?: any;
+  patientAnswer?: any;
+  isCorrect?: boolean;
+  score?: number; // 0 to 100
+  responseTimeMs?: number;
+  hintsUsed?: number;
+  skipped?: boolean;
+  timestamp?: string;
 }
 
 export interface CognitiveScore {
-  domain: CognitiveDomain;
+  domain: string;
   score: number; // 0 to 100 calculated from real responses
   status: 'Strong' | 'Good' | 'Needs Practice' | 'Developing';
   recommendation: string;
@@ -110,7 +111,7 @@ export interface AssessmentSession {
   endTime: string;
   durationSeconds: number;
   overallScore: number;
-  domainScores: Record<CognitiveDomain, CognitiveScore>;
+  domainScores: Record<string, CognitiveScore>;
   taskResponses: AssessmentTaskResponse[];
   aiSummary: string;
   recommendedActivities: string[];
@@ -119,13 +120,16 @@ export interface AssessmentSession {
 
 export interface AssessmentResult {
   sessionId?: string;
+  patientId?: string;
   completedAt: string;
   overallScore: number;
-  domainScores: Record<CognitiveDomain, CognitiveScore>;
+  focusDomain?: string;
+  domainScores: Record<string, CognitiveScore>;
   aiSummary: string;
   recommendedActivities: string[];
   clinicalNotes: string;
   taskResponses?: AssessmentTaskResponse[];
+  rawAiBaseline?: Record<string, any>;
 }
 
 export interface CognitiveActivity {
@@ -180,6 +184,7 @@ export interface Medicine {
   dosage: string;
   instructions: string; // e.g. "Take 1 tablet after breakfast"
   timeSlot: 'Morning' | 'Afternoon' | 'Evening' | 'Night';
+  schedule?: string;
   time: string; // "09:00 AM"
   purpose: string; // "Blood Pressure"
   pillColor: string;

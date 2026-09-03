@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
 import {
   Sparkles,
   User,
@@ -15,8 +16,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Zap,
+  Database,
 } from 'lucide-react';
 import { AccessibilityDrawer } from '../common/AccessibilityDrawer';
+import { DatabaseStatusModal } from '../common/DatabaseStatusModal';
 
 export const DemoToolbar: React.FC = () => {
   const {
@@ -31,9 +34,13 @@ export const DemoToolbar: React.FC = () => {
     resetDemoData,
     simulatePatientActions,
     patient,
+    dbHealth,
   } = useApp();
 
+  const { user, signOut } = useAuth();
+
   const [showA11y, setShowA11y] = useState(false);
+  const [showDbModal, setShowDbModal] = useState(false);
   const [showFlowMenu, setShowFlowMenu] = useState(false);
 
   const demoSteps = [
@@ -213,6 +220,25 @@ export const DemoToolbar: React.FC = () => {
               {isOffline ? <WifiOff size={15} /> : <Wifi size={15} />}
             </button>
 
+            {/* Supabase Cloud DB Live Badge */}
+            <button
+              onClick={() => setShowDbModal(true)}
+              title={`Supabase Cloud DB: ${dbHealth?.isConnected ? 'Connected' : 'Offline'}`}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border font-bold text-xs transition-all cursor-pointer ${
+                dbHealth?.isConnected
+                  ? 'bg-emerald-950/70 border-emerald-500/50 text-emerald-300 hover:bg-emerald-900/80 shadow-xs'
+                  : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Database size={13} className={dbHealth?.isConnected ? 'text-emerald-400' : 'text-slate-400'} />
+              <span className="hidden md:inline">Supabase</span>
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  dbHealth?.isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
+                }`}
+              />
+            </button>
+
             {/* Accessibility Button */}
             <button
               onClick={() => setShowA11y(true)}
@@ -221,6 +247,28 @@ export const DemoToolbar: React.FC = () => {
             >
               <Sliders size={15} />
             </button>
+
+            {/* Auth Session Button (Sign In / Sign Out) */}
+            {user ? (
+              <button
+                onClick={async () => {
+                  await signOut();
+                  navigate('/welcome');
+                }}
+                title={`Signed in as ${user.email}. Click to sign out.`}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-950/70 hover:bg-rose-900 border border-rose-600/40 text-rose-300 font-bold text-xs transition-colors cursor-pointer"
+              >
+                <span>Logout</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => navigate('/login')}
+                title="Sign in with Supabase Auth"
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-800 hover:bg-teal-700 text-white font-bold text-xs transition-colors cursor-pointer"
+              >
+                <span>Login</span>
+              </button>
+            )}
 
             {/* Reset Demo Button */}
             <button
@@ -235,6 +283,7 @@ export const DemoToolbar: React.FC = () => {
       </header>
 
       <AccessibilityDrawer isOpen={showA11y} onClose={() => setShowA11y(false)} />
+      <DatabaseStatusModal isOpen={showDbModal} onClose={() => setShowDbModal(false)} />
     </>
   );
 };

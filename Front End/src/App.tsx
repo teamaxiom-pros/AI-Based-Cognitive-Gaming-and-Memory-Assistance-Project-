@@ -1,8 +1,11 @@
 import React from 'react';
 import { useApp } from './context/AppContext';
+import { useAuth } from './context/AuthContext';
 import { DemoToolbar } from './components/layout/DemoToolbar';
 import { GuidedDemoController } from './components/demo/GuidedDemoController';
 import { WelcomePage } from './pages/onboarding/WelcomePage';
+import { AuthPage } from './pages/auth/AuthPage';
+import { ResetPasswordPage } from './pages/auth/ResetPasswordPage';
 import { OnboardingFlow } from './pages/onboarding/OnboardingFlow';
 import { AssessmentIntro } from './pages/assessment/AssessmentIntro';
 import { AssessmentRunner } from './pages/assessment/AssessmentRunner';
@@ -29,16 +32,28 @@ import { AlertsCenterPage } from './pages/caregiver/AlertsCenterPage';
 import { AppointmentsManagerPage } from './pages/caregiver/AppointmentsManagerPage';
 import { ReportGeneratorPage } from './pages/caregiver/ReportGeneratorPage';
 import { CaregiverSettingsPage } from './pages/caregiver/CaregiverSettingsPage';
-import { Sparkles, CheckCircle2 } from 'lucide-react';
+import { CheckCircle2 } from 'lucide-react';
 
 export const App: React.FC = () => {
   const { currentRoute, toastMessage } = useApp();
+  const { isAuthenticated, role } = useAuth();
 
   const renderRoute = () => {
     const routeBase = currentRoute.split('?')[0];
     switch (routeBase) {
+      // Public / Auth Routes
       case '/welcome':
         return <WelcomePage />;
+      case '/login':
+        return <AuthPage initialMode="login" />;
+      case '/signup':
+        return <AuthPage initialMode="signup" />;
+      case '/forgot-password':
+        return <AuthPage initialMode="forgot-password" />;
+      case '/reset-password':
+        return <ResetPasswordPage />;
+
+      // Patient Routes
       case '/onboarding/flow':
       case '/onboarding/profile':
       case '/onboarding/caregiver':

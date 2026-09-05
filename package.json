@@ -3,14 +3,18 @@
   "version": "1.0.0",
   "description": "SMRITI: AI-Based Cognitive Gaming and Memory Assistance Platform (Team Axiom • SIH 2026 PS 26003)",
   "private": true,
+  "workspaces": [
+    "FE",
+    "BE"
+  ],
   "scripts": {
     "dev": "npm --prefix BE run dev",
     "dev:backend": "npm --prefix BE run dev",
     "dev:frontend": "npm --prefix FE run dev",
     "dev:ai": "python -m uvicorn AI.src.api:app --reload --port 8000",
-    "build": "npm --prefix FE run build && npm --prefix BE run build",
-    "build:frontend": "npm --prefix FE run build",
-    "build:backend": "npm --prefix BE run build",
+    "build": "npm --prefix FE install && npm --prefix FE run build && npm --prefix BE install && npm --prefix BE run build",
+    "build:frontend": "npm --prefix FE install && npm --prefix FE run build",
+    "build:backend": "npm --prefix BE install && npm --prefix BE run build",
     "start": "npm --prefix BE start",
     "test:frontend": "npm --prefix FE test",
     "test:backend": "npm --prefix BE test",

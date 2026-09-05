@@ -1,0 +1,6 @@
+archive/
+docs/
+scripts/
+.git/
+.env*
+!FE/.env.example

@@ -21,12 +21,30 @@ from pathlib import Path
 import joblib
 import pandas as pd
 
-from .performance_engine import analyze_performance
-
-from .personalization_engine import (
-    choose_priority_domain,
-    choose_activity,
-)
+try:
+    from .performance_engine import analyze_performance
+    from .personalization_engine import (
+        choose_priority_domain,
+        choose_activity,
+    )
+except ImportError:
+    try:
+        from AI.src.performance_engine import analyze_performance
+        from AI.src.personalization_engine import (
+            choose_priority_domain,
+            choose_activity,
+        )
+    except ImportError:
+        import sys
+        from pathlib import Path
+        _src_dir = Path(__file__).resolve().parent
+        if str(_src_dir) not in sys.path:
+            sys.path.insert(0, str(_src_dir))
+        from performance_engine import analyze_performance
+        from personalization_engine import (
+            choose_priority_domain,
+            choose_activity,
+        )
 
 
 # ---------------------------------

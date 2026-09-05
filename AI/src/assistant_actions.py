@@ -5,16 +5,42 @@ Connects detected intents to actual patient data
 and application functionality.
 """
 
-from .assistant_data import (
-    get_next_medicine,
-    get_today_schedule,
-    get_caregiver,
-    get_memory_information,
-)
-
-from .recommendation_engine import (
-    generate_recommendation,
-)
+try:
+    from .assistant_data import (
+        get_next_medicine,
+        get_today_schedule,
+        get_caregiver,
+        get_memory_information,
+    )
+    from .recommendation_engine import (
+        generate_recommendation,
+    )
+except ImportError:
+    try:
+        from AI.src.assistant_data import (
+            get_next_medicine,
+            get_today_schedule,
+            get_caregiver,
+            get_memory_information,
+        )
+        from AI.src.recommendation_engine import (
+            generate_recommendation,
+        )
+    except ImportError:
+        import sys
+        from pathlib import Path
+        _src_dir = Path(__file__).resolve().parent
+        if str(_src_dir) not in sys.path:
+            sys.path.insert(0, str(_src_dir))
+        from assistant_data import (
+            get_next_medicine,
+            get_today_schedule,
+            get_caregiver,
+            get_memory_information,
+        )
+        from recommendation_engine import (
+            generate_recommendation,
+        )
 
 
 def handle_intent(

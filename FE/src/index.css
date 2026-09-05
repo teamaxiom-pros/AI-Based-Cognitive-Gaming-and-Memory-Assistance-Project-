@@ -1,0 +1,145 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --text-scale: 1.1;
+    --touch-min-height: 48px;
+  }
+
+  /* Accessibility Text Size Scales */
+  html.text-scale-normal {
+    font-size: 16px;
+  }
+
+  html.text-scale-large {
+    font-size: 19px; /* Elderly-friendly large font */
+  }
+
+  html.text-scale-xlarge {
+    font-size: 22px; /* Extra Large font */
+  }
+
+  /* High Contrast Mode */
+  html.high-contrast {
+    filter: contrast(1.2);
+  }
+
+  html.high-contrast body {
+    background-color: #F1F5F9;
+    color: #000000;
+  }
+
+  html.high-contrast .bg-white {
+    border-color: #0F172A !important;
+    border-width: 2px !important;
+  }
+
+  html.high-contrast button {
+    border-width: 2px !important;
+    font-weight: 800 !important;
+  }
+
+  html.high-contrast .text-slate-500,
+  html.high-contrast .text-slate-600 {
+    color: #1E293B !important;
+    font-weight: 600 !important;
+  }
+
+  /* Reduced Motion Mode */
+  html.reduce-motion * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+
+  html, body {
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    color: #1F2937;
+    background-color: #F8F6EF;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif;
+  }
+}
+
+/* Safe Area Insets for Mobile Devices */
+.pb-safe {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+}
+
+.pt-safe {
+  padding-top: max(0.5rem, env(safe-area-inset-top));
+}
+
+/* Card 3D Flip Effects for Memory Match Game */
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+.transform-style-3d {
+  transform-style: preserve-3d;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.rotate-y-180 {
+  transform: rotateY(180deg);
+}
+
+/* Audio Waveform Animation */
+@keyframes soundwave {
+  0%, 100% { height: 8px; }
+  50% { height: 36px; }
+}
+
+.animate-wave-1 { animation: soundwave 1s ease-in-out infinite 0.1s; }
+.animate-wave-2 { animation: soundwave 1s ease-in-out infinite 0.3s; }
+.animate-wave-3 { animation: soundwave 1s ease-in-out infinite 0.5s; }
+.animate-wave-4 { animation: soundwave 1s ease-in-out infinite 0.2s; }
+.animate-wave-5 { animation: soundwave 1s ease-in-out infinite 0.4s; }
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #F1F5F9;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+/* Elderly-friendly large button utility */
+.btn-elderly {
+  min-height: 54px;
+  font-size: 1.15rem;
+  font-weight: 600;
+  border-radius: 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+}
+
+.btn-elderly:active {
+  transform: scale(0.98);
+}

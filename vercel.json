@@ -1,15 +1,15 @@
 {
   "version": 2,
   "buildCommand": "npm run build",
-  "outputDirectory": "Front End/dist",
+  "outputDirectory": "FE/dist",
   "functions": {
     "api/ai.py": {
       "includeFiles": "AI/**",
-      "excludeFiles": "{node_modules/**,Front End/**,dist/**,src/**,.git/**,BE/**,prisma/**}"
+      "excludeFiles": "{node_modules/**,FE/**,dist/**,BE/**,.git/**}"
     },
     "api/index.ts": {
-      "includeFiles": "{src/**,AI/data/**}",
-      "excludeFiles": "{Front End/**,dist/**,.git/**,BE/**}"
+      "includeFiles": "{BE/**,AI/data/**}",
+      "excludeFiles": "{FE/**,dist/**,.git/**}"
     }
   },
   "rewrites": [

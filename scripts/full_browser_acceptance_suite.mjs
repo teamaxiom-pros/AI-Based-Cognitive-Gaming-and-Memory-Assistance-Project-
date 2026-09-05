@@ -3,13 +3,14 @@ import os from 'os';
 import path from 'path';
 import fs from 'fs';
 
+const CHROME_PORT = 9444;
 const CHROME_PATH = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const profileDir = path.join(os.tmpdir(), 'axiom_chrome_acceptance_' + Date.now());
 fs.mkdirSync(profileDir, { recursive: true });
 
-console.log('🚀 Launching Real Chrome for End-to-End Browser Acceptance QA...');
+console.log('🚀 Launching Real Chrome for End-to-End Browser Acceptance QA on port ' + CHROME_PORT + '...');
 const chrome = spawn(CHROME_PATH, [
-  '--remote-debugging-port=9222',
+  `--remote-debugging-port=${CHROME_PORT}`,
   '--headless=new',
   '--disable-gpu',
   '--no-first-run',
@@ -73,28 +74,28 @@ async function sleep(ms) {
 
 async function runAcceptanceSuite() {
   let versionInfo = null;
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < 25; i++) {
     try {
-      const res = await fetch('http://127.0.0.1:9222/json/version');
+      const res = await fetch(`http://127.0.0.1:${CHROME_PORT}/json/version`);
       if (res.ok) {
         versionInfo = await res.json();
         break;
       }
     } catch {
-      await sleep(400);
+      await sleep(300);
     }
   }
 
   if (!versionInfo) {
-    throw new Error('Could not connect to Chrome CDP.');
+    throw new Error('Could not connect to Chrome CDP on port ' + CHROME_PORT);
   }
 
-  let listRes = await fetch('http://127.0.0.1:9222/json/list');
+  let listRes = await fetch(`http://127.0.0.1:${CHROME_PORT}/json/list`);
   let targets = await listRes.json();
   let target = targets.find(t => t.type === 'page');
 
   if (!target) {
-    const putRes = await fetch('http://127.0.0.1:9222/json/new?http://localhost:5173/', { method: 'PUT' });
+    const putRes = await fetch(`http://127.0.0.1:${CHROME_PORT}/json/new?http://localhost:5173/`, { method: 'PUT' });
     target = await putRes.json();
   }
 
@@ -132,6 +133,16 @@ async function runAcceptanceSuite() {
     return res.result?.value;
   }
 
+  async function waitForSelector(selector, timeoutMs = 8000) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const val = await evaluate(`document.querySelector("${selector}")?.innerText`);
+      if (val !== undefined && val !== null && val.trim().length > 0) return val;
+      await sleep(200);
+    }
+    return null;
+  }
+
   async function setViewport(width, height) {
     await cdp.send('Emulation.setDeviceMetricsOverride', {
       width,
@@ -152,7 +163,7 @@ async function runAcceptanceSuite() {
   await sleep(1500);
 
   const landingTitle = await evaluate('document.title');
-  const heroHeading = await evaluate('document.querySelector("h1")?.innerText');
+  const heroHeading = await waitForSelector('h1');
   console.log(`   Page Title: "${landingTitle}"`);
   console.log(`   Hero Heading: "${heroHeading}"`);
 

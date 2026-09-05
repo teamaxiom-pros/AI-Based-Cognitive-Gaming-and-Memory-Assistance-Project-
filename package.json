@@ -1,24 +1,21 @@
 {
-  "name": "ner-dementia-care-backend",
+  "name": "smriti-platform-monorepo",
   "version": "1.0.0",
-  "description": "Backend for AI-based cognitive gaming and memory assistance (NER dementia care)",
-  "main": "dist/server.js",
+  "description": "SMRITI: AI-Based Cognitive Gaming and Memory Assistance Platform (Team Axiom • SIH 2026 PS 26003)",
+  "private": true,
   "scripts": {
-    "dev": "tsx watch src/server.ts",
-    "build": "npm --prefix \"Front End\" install && npm --prefix \"Front End\" run build",
-    "build:frontend": "npm --prefix \"Front End\" run build",
-    "build:backend": "tsc",
-    "start": "node dist/server.js",
-    "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev",
-    "db:migrate:deploy": "prisma migrate deploy",
-    "db:seed": "tsx src/db/seed.ts",
-    "db:studio": "prisma studio",
-    "postinstall": "prisma generate"
-  },
-  "prisma": {
-    "schema": "prisma/schema.prisma",
-    "seed": "tsx src/db/seed.ts"
+    "dev": "npm --prefix BE run dev",
+    "dev:backend": "npm --prefix BE run dev",
+    "dev:frontend": "npm --prefix FE run dev",
+    "dev:ai": "python -m uvicorn AI.src.api:app --reload --port 8000",
+    "build": "npm --prefix FE run build && npm --prefix BE run build",
+    "build:frontend": "npm --prefix FE run build",
+    "build:backend": "npm --prefix BE run build",
+    "start": "npm --prefix BE start",
+    "test:frontend": "npm --prefix FE test",
+    "test:backend": "npm --prefix BE test",
+    "test:ai": "python AI/tests/test_adaptive_engine.py",
+    "test:browser": "node scripts/full_browser_acceptance_suite.mjs"
   },
   "engines": {
     "node": ">=20"

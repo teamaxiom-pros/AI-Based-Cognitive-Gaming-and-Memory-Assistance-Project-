@@ -1,9 +1,20 @@
 from fastapi import FastAPI
-from .axiom_ai import process_request
+try:
+    from .smriti_ai import process_request
+except ImportError:
+    try:
+        from AI.src.smriti_ai import process_request
+    except ImportError:
+        import sys
+        from pathlib import Path
+        _src_dir = Path(__file__).resolve().parent
+        if str(_src_dir) not in sys.path:
+            sys.path.insert(0, str(_src_dir))
+        from smriti_ai import process_request
 
 app = FastAPI(
-    title="Team Axiom AI API",
-    description="AI service for the Axiom cognitive assistance platform",
+    title="SMRITI AI API",
+    description="AI Cognitive Engine for SMRITI Platform (Team Axiom • SIH 2026)",
     version="1.0.0",
 )
 
@@ -11,7 +22,7 @@ app = FastAPI(
 @app.get("/")
 def root():
     return {
-        "message": "Axiom AI API is running"
+        "message": "SMRITI AI API is running"
     }
 
 
